@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RaspLb.Benchmark": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

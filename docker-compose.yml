@@ -1,0 +1,58 @@
+services:
+
+  backend1:
+    container_name: rasp-backend-1
+    build:
+      context: .
+      dockerfile: backend/RaspLb.Backend/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      INSTANCE_NAME: Backend-1
+      BASE_LATENCY_MS: 40
+      ERROR_RATE: 0
+    ports:
+      - "5101:8080"
+
+  backend2:
+    container_name: rasp-backend-2
+    build:
+      context: .
+      dockerfile: backend/RaspLb.Backend/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      INSTANCE_NAME: Backend-2
+      BASE_LATENCY_MS: 350
+      ERROR_RATE: 0
+    ports:
+      - "5102:8080"
+
+  backend3:
+    container_name: rasp-backend-3
+    build:
+      context: .
+      dockerfile: backend/RaspLb.Backend/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      INSTANCE_NAME: Backend-3
+      BASE_LATENCY_MS: 70
+      ERROR_RATE: 0.10
+    ports:
+      - "5103:8080"
+
+  gateway:
+    container_name: rasp-gateway
+    build:
+      context: .
+      dockerfile: Gateway/RaspLb.Gateway/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+    ports:
+      - "5200:8080"
+    depends_on:
+      - backend1
+      - backend2
+      - backend3

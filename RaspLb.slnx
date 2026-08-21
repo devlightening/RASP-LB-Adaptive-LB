@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/Docker/">
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Project Path="backend/RaspLb.Backend/RaspLb.Backend.csproj" />
+  <Project Path="Benchmark/RaspLb.Benchmark/RaspLb.Benchmark.csproj" Id="b118b81a-8c40-4d21-bf91-b6a3ba1cdcdf" />
+  <Project Path="Gateway/RaspLb.Gateway/RaspLb.Gateway.csproj" />
+</Solution>
