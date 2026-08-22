@@ -14,6 +14,10 @@ builder.Services.AddSingleton<
     ILoadBalancingPolicy,
     RaspV1LoadBalancingPolicy>();
 
+builder.Services.AddSingleton<
+    ILoadBalancingPolicy,
+    RaspV2LoadBalancingPolicy>();
+
 builder.Services
     .AddReverseProxy()
     .LoadFromConfig(

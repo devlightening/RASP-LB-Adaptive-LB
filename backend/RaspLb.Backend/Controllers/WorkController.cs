@@ -1,58 +1,146 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using System.Diagnostics;
 
-namespace RaspLb.Backend.Controllers
+namespace RaspLb.Backend.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class WorkController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class WorkController : ControllerBase
+    private static readonly int MaxConcurrency =
+        GetIntEnvironmentVariable(
+            "MAX_CONCURRENCY",
+            100);
+
+    private static readonly SemaphoreSlim CapacityGate =
+        new(
+            MaxConcurrency,
+            MaxConcurrency);
+
+    private static int _activeRequests;
+
+    [HttpGet]
+    public async Task<IActionResult> Get(
+        CancellationToken cancellationToken)
     {
+        var totalWatch =
+            Stopwatch.StartNew();
 
-        public async Task<IActionResult> Get()
+        /*
+         * QUEUE
+         *
+         * If the backend is already at capacity,
+         * the request waits here.
+         */
+        var queueWatch =
+            Stopwatch.StartNew();
+
+        await CapacityGate.WaitAsync(
+            cancellationToken);
+
+        queueWatch.Stop();
+
+        var activeRequestsAtStart =
+            Interlocked.Increment(
+                ref _activeRequests);
+
+        try
         {
-            var stopwatch = Stopwatch.StartNew();
-
-            var instanceName = Environment.GetEnvironmentVariable("INSTANCE_NAME") ?? Environment.MachineName;
+            var instanceName =
+                Environment.GetEnvironmentVariable(
+                    "INSTANCE_NAME")
+                ?? Environment.MachineName;
 
             var latencyMs =
-                int.TryParse(
-                    Environment.GetEnvironmentVariable("BASE_LATENCY_MS"),
-                    out var latency)
-                    ? latency
-                    : 50;
+                GetIntEnvironmentVariable(
+                    "BASE_LATENCY_MS",
+                    50);
+
             var errorRate =
-                double.TryParse(
-                    Environment.GetEnvironmentVariable("ERROR_RATE"),
-                    out var rate)
-                    ? rate
-                    : 0;
+                GetDoubleEnvironmentVariable(
+                    "ERROR_RATE",
+                    0);
 
-            await Task.Delay(latencyMs);
+            /*
+             * Simulated backend processing.
+             */
+            await Task.Delay(
+                latencyMs,
+                cancellationToken);
 
-            var shouldFail = Random.Shared.NextDouble() < errorRate;
-            stopwatch.Stop();
+            var shouldFail =
+                Random.Shared.NextDouble()
+                < errorRate;
+
+            totalWatch.Stop();
+
+            var response = new
+            {
+                InstanceName = instanceName,
+
+                Status =
+                    shouldFail
+                        ? "Failed"
+                        : "Success",
+
+                ConfiguredLatencyMs =
+                    latencyMs,
+
+                ErrorRate =
+                    errorRate,
+
+                MaxConcurrency =
+                    MaxConcurrency,
+
+                ActiveRequestsAtStart =
+                    activeRequestsAtStart,
+
+                QueueDelayMs =
+                    queueWatch.ElapsedMilliseconds,
+
+                ElapsedMs =
+                    totalWatch.ElapsedMilliseconds
+            };
 
             if (shouldFail)
             {
-                return StatusCode(503, new
-                {
-                    InstanceName = instanceName,
-                    Status = "Failed",
-                    ConfiguredLatencyMs = latencyMs,
-                    ErrorRate = errorRate,
-                    ElapsedMs = stopwatch.ElapsedMilliseconds
-                });
+                return StatusCode(
+                    503,
+                    response);
             }
 
-            return Ok(new
-            {
-                InstanceName = instanceName,
-                Status = "Success",
-                ConfiguredLatencyMs = latencyMs,
-                ErrorRate = errorRate,
-                ElapsedMs = stopwatch.ElapsedMilliseconds
-            });
+            return Ok(response);
         }
+        finally
+        {
+            Interlocked.Decrement(
+                ref _activeRequests);
+
+            CapacityGate.Release();
+        }
+    }
+
+    private static int GetIntEnvironmentVariable(
+        string name,
+        int defaultValue)
+    {
+        return int.TryParse(
+            Environment.GetEnvironmentVariable(name),
+            out var value)
+            ? value
+            : defaultValue;
+    }
+
+    private static double GetDoubleEnvironmentVariable(
+        string name,
+        double defaultValue)
+    {
+        return double.TryParse(
+            Environment.GetEnvironmentVariable(name),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : defaultValue;
     }
 }

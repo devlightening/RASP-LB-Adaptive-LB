@@ -11,6 +11,7 @@ services:
       INSTANCE_NAME: Backend-1
       BASE_LATENCY_MS: 40
       ERROR_RATE: 0
+      MAX_CONCURRENCY: 2
     ports:
       - "5101:8080"
 
@@ -23,8 +24,9 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       INSTANCE_NAME: Backend-2
-      BASE_LATENCY_MS: 350
+      BASE_LATENCY_MS: 70
       ERROR_RATE: 0
+      MAX_CONCURRENCY: 8
     ports:
       - "5102:8080"
 
@@ -37,8 +39,9 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       INSTANCE_NAME: Backend-3
-      BASE_LATENCY_MS: 70
-      ERROR_RATE: 0.10
+      BASE_LATENCY_MS: 120
+      ERROR_RATE: 0
+      MAX_CONCURRENCY: 8
     ports:
       - "5103:8080"
 
