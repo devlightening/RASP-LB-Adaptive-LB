@@ -18,9 +18,9 @@ public sealed class DestinationMetricsStore
     public void Record(
         DestinationState destination,
         double latencyMs,
-        bool success)
+        DestinationRequestOutcome outcome)
     {
-        Get(destination).Record(latencyMs, success);
+        Get(destination).Record(latencyMs, outcome);
     }
 
     public IReadOnlyDictionary<string, DestinationMetrics> GetAll()

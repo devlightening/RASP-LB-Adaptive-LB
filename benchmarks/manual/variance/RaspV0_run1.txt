@@ -1,0 +1,61 @@
+Benchmark\RaspLb.Benchmark\Properties\launchSettings.json içindeki başlatma ayarları kullanılıyor...
+========================================
+          RASP-LB BENCHMARK
+========================================
+
+Target      : http://localhost:5200/api/work
+Requests    : 300
+Concurrency : 20
+Started At  : 15:54:40
+
+
+========================================
+               RESULTS
+========================================
+
+Total Requests : 300
+Successful     : 300
+Failed         : 0
+Success Rate   : 100,00%
+
+Average Latency: 199,39 ms
+P50 Latency    : 163,98 ms
+P95 Latency    : 403,63 ms
+P99 Latency    : 471,12 ms
+
+Total Duration : 3,12 sec
+Throughput     : 96,14 req/sec
+
+BACKEND DISTRIBUTION
+----------------------------------------
+Backend-1    Total:   75 | Success:   75 | Failed:    0
+Backend-2    Total:  149 | Success:  149 | Failed:    0
+Backend-3    Total:   76 | Success:   76 | Failed:    0
+
+QUEUE METRICS
+----------------------------------------
+Queued Requests : 226
+Queue Rate      : 75,33%
+Average Queue   : 96,08 ms
+P50 Queue       : 76,00 ms
+P95 Queue       : 330,00 ms
+P99 Queue       : 363,00 ms
+Max Queue       : 366,00 ms
+
+QUEUE BY BACKEND
+----------------------------------------
+Backend-1    AvgQueue:  206,71 ms | P95Queue:  363,00 ms | MaxQueue:  366,00 ms | Queued:   66/  75
+Backend-2    AvgQueue:   47,36 ms | P95Queue:  112,00 ms | MaxQueue:  129,00 ms | Queued:  107/ 149
+Backend-3    AvgQueue:   82,43 ms | P95Queue:  190,00 ms | MaxQueue:  192,00 ms | Queued:   53/  76
+
+LOAD BY BACKEND
+----------------------------------------
+Backend-1    Capacity:   2 | AvgActive:   1,92 | MaxActive:   2
+Backend-2    Capacity:   8 | AvgActive:   7,01 | MaxActive:   8
+Backend-3    Capacity:   8 | AvgActive:   6,67 | MaxActive:   8
+
+STATUS CODES
+----------------------------------------
+OK                  : 300
+
+Benchmark completed.

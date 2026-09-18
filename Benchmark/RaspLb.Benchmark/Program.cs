@@ -2,10 +2,24 @@
 using System.Diagnostics;
 using System.Net;
 
-const string GatewayUrl = "http://localhost:5200/api/work";
+var gatewayUrl =
+    Environment.GetEnvironmentVariable("BENCHMARK_GATEWAY_URL")
+    ?? "http://localhost:5200/api/work";
 
-const int TotalRequests = 300;
-const int Concurrency = 20;
+var totalRequests =
+    GetPositiveIntEnvironmentVariable(
+        "BENCHMARK_REQUESTS",
+        300);
+
+var concurrency =
+    GetPositiveIntEnvironmentVariable(
+        "BENCHMARK_CONCURRENCY",
+        20);
+
+var warmupRequests =
+    GetNonNegativeIntEnvironmentVariable(
+        "BENCHMARK_WARMUP_REQUESTS",
+        50);
 
 using var httpClient = new HttpClient
 {
@@ -18,90 +32,52 @@ Console.WriteLine("========================================");
 Console.WriteLine("          RASP-LB BENCHMARK");
 Console.WriteLine("========================================");
 Console.WriteLine();
-Console.WriteLine($"Target      : {GatewayUrl}");
-Console.WriteLine($"Requests    : {TotalRequests}");
-Console.WriteLine($"Concurrency : {Concurrency}");
+Console.WriteLine($"Target      : {gatewayUrl}");
+Console.WriteLine($"Warm-up     : {warmupRequests}");
+Console.WriteLine($"Requests    : {totalRequests}");
+Console.WriteLine($"Concurrency : {concurrency}");
 Console.WriteLine($"Started At  : {DateTime.Now:HH:mm:ss}");
 Console.WriteLine();
+
+if (warmupRequests > 0)
+{
+    Console.WriteLine(
+        $"Running {warmupRequests} warm-up requests " +
+        "(excluded from results)...");
+
+    await Parallel.ForEachAsync(
+        Enumerable.Range(1, warmupRequests),
+        new ParallelOptions
+        {
+            MaxDegreeOfParallelism = concurrency
+        },
+        async (_, cancellationToken) =>
+        {
+            await SendRequestAsync(
+                httpClient,
+                gatewayUrl,
+                cancellationToken);
+        });
+
+    Console.WriteLine("Warm-up completed.");
+    Console.WriteLine();
+}
 
 var totalWatch = Stopwatch.StartNew();
 
 await Parallel.ForEachAsync(
-    Enumerable.Range(1, TotalRequests),
+    Enumerable.Range(1, totalRequests),
     new ParallelOptions
     {
-        MaxDegreeOfParallelism = Concurrency
+        MaxDegreeOfParallelism = concurrency
     },
     async (_, cancellationToken) =>
     {
-        var requestWatch = Stopwatch.StartNew();
-
-        try
-        {
-            using var response =
-                await httpClient.GetAsync(
-                    GatewayUrl,
-                    cancellationToken);
-
-            var json =
-                await response.Content.ReadAsStringAsync(
-                    cancellationToken);
-
-            requestWatch.Stop();
-
-            var backendName =
-                ExtractJsonValue(
-                    json,
-                    "instanceName")
-                ?? "Unknown";
-
-            var queueDelayMs =
-                ExtractJsonDouble(
-                    json,
-                    "queueDelayMs");
-
-            var activeRequestsAtStart =
-                ExtractJsonInt(
-                    json,
-                    "activeRequestsAtStart");
-
-            var maxConcurrency =
-                ExtractJsonInt(
-                    json,
-                    "maxConcurrency");
-
-            results.Add(
-                new RequestResult(
-                    Success: response.IsSuccessStatusCode,
-                    StatusCode: response.StatusCode,
-                    LatencyMs:
-                        requestWatch.Elapsed.TotalMilliseconds,
-                    Backend: backendName,
-                    QueueDelayMs: queueDelayMs,
-                    ActiveRequestsAtStart:
-                        activeRequestsAtStart,
-                    MaxConcurrency:
-                        maxConcurrency
-                )
-            );
-        }
-        catch
-        {
-            requestWatch.Stop();
-
-            results.Add(
-                new RequestResult(
-                    Success: false,
-                    StatusCode: null,
-                    LatencyMs:
-                        requestWatch.Elapsed.TotalMilliseconds,
-                    Backend: "Unknown",
-                    QueueDelayMs: 0,
-                    ActiveRequestsAtStart: 0,
-                    MaxConcurrency: 0
-                )
-            );
-        }
+        results.Add(
+            await SendRequestAsync(
+                httpClient,
+                gatewayUrl,
+                cancellationToken));
     });
 
 totalWatch.Stop();
@@ -355,6 +331,95 @@ Console.WriteLine("Benchmark completed.");
 // ======================================================
 // HELPERS
 // ======================================================
+
+static async Task<RequestResult> SendRequestAsync(
+    HttpClient httpClient,
+    string gatewayUrl,
+    CancellationToken cancellationToken)
+{
+    var requestWatch = Stopwatch.StartNew();
+
+    try
+    {
+        using var response =
+            await httpClient.GetAsync(
+                gatewayUrl,
+                cancellationToken);
+
+        var json =
+            await response.Content.ReadAsStringAsync(
+                cancellationToken);
+
+        requestWatch.Stop();
+
+        return new RequestResult(
+            Success: response.IsSuccessStatusCode,
+            StatusCode: response.StatusCode,
+            LatencyMs: requestWatch.Elapsed.TotalMilliseconds,
+            Backend:
+                ExtractJsonValue(json, "instanceName")
+                ?? "Unknown",
+            QueueDelayMs:
+                ExtractJsonDouble(json, "queueDelayMs"),
+            ActiveRequestsAtStart:
+                ExtractJsonInt(json, "activeRequestsAtStart"),
+            MaxConcurrency:
+                ExtractJsonInt(json, "maxConcurrency"));
+    }
+    catch
+    {
+        requestWatch.Stop();
+
+        return new RequestResult(
+            Success: false,
+            StatusCode: null,
+            LatencyMs: requestWatch.Elapsed.TotalMilliseconds,
+            Backend: "Unknown",
+            QueueDelayMs: 0,
+            ActiveRequestsAtStart: 0,
+            MaxConcurrency: 0);
+    }
+}
+
+static int GetPositiveIntEnvironmentVariable(
+    string name,
+    int defaultValue)
+{
+    var value =
+        GetNonNegativeIntEnvironmentVariable(
+            name,
+            defaultValue);
+
+    if (value == 0)
+    {
+        throw new InvalidOperationException(
+            $"{name} must be greater than zero.");
+    }
+
+    return value;
+}
+
+static int GetNonNegativeIntEnvironmentVariable(
+    string name,
+    int defaultValue)
+{
+    var rawValue =
+        Environment.GetEnvironmentVariable(name);
+
+    if (string.IsNullOrWhiteSpace(rawValue))
+    {
+        return defaultValue;
+    }
+
+    if (!int.TryParse(rawValue, out var value) ||
+        value < 0)
+    {
+        throw new InvalidOperationException(
+            $"{name} must be a non-negative integer.");
+    }
+
+    return value;
+}
 
 static double Percentile(
     double[] sortedValues,
