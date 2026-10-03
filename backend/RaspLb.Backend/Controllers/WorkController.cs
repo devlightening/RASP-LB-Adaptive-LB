@@ -43,8 +43,13 @@ public class WorkController : ControllerBase
         var queueWatch =
             Stopwatch.StartNew();
 
+        var priority =
+            ParsePriority(
+                Request.Headers["X-Rasp-Priority"]);
+
         var admission =
             await _admissionGate.EnterAsync(
+                priority,
                 cancellationToken);
 
         queueWatch.Stop();
@@ -68,6 +73,7 @@ public class WorkController : ControllerBase
                 {
                     Status = "Shed",
                     Reason = reason,
+                    Priority = priority.ToString(),
                     QueueDelayMs = queueWatch.ElapsedMilliseconds
                 });
         }
@@ -180,6 +186,18 @@ public class WorkController : ControllerBase
             _admissionGate.Exit(
                 serviceWatch.Elapsed.TotalMilliseconds);
         }
+    }
+
+    // Başlık yoksa ya da tanınmıyorsa normal öncelik.
+    private static RequestPriority ParsePriority(
+        string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "critical" => RequestPriority.Critical,
+            "sheddable" => RequestPriority.Sheddable,
+            _ => RequestPriority.Normal
+        };
     }
 
     private static int GetIntEnvironmentVariable(

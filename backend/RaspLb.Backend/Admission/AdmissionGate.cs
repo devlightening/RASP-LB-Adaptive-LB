@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RaspLb.Backend.Admission;
 
 public enum AdmissionResult
@@ -7,6 +9,20 @@ public enum AdmissionResult
     RejectedPredictedWait,
     RejectedQueueTimeout
 }
+
+[JsonConverter(typeof(JsonStringEnumConverter<RequestPriority>))]
+public enum RequestPriority
+{
+    Critical,
+    Normal,
+    Sheddable
+}
+
+public readonly record struct PriorityAdmissionSnapshot(
+    RequestPriority Priority,
+    double QueueShare,
+    long Admitted,
+    long Rejected);
 
 public readonly record struct AdmissionSnapshot(
     int Capacity,
@@ -20,7 +36,8 @@ public readonly record struct AdmissionSnapshot(
     long Admitted,
     long RejectedQueueFull,
     long RejectedPredictedWait,
-    long RejectedQueueTimeout);
+    long RejectedQueueTimeout,
+    IReadOnlyList<PriorityAdmissionSnapshot> ByPriority);
 
 // Backend'in kapasite kapısı. Önceden controller'daki çıplak bir
 // SemaphoreSlim'di; şimdi kuyrukta kaç isteğin beklediğini bilen,
@@ -29,6 +46,11 @@ public readonly record struct AdmissionSnapshot(
 public sealed class AdmissionGate
 {
     private const double ServiceTimeAlpha = 0.2;
+
+    // Kuyruk bütçesinin (uzunluk ve bekleme süresi) her önceliğe düşen payı.
+    // Kuyruk dolmaya başlayınca önce sheddable, sonra normal istekler kapıda
+    // reddedilir; kuyruğun son kısmı yalnızca critical isteklere kalır.
+    private static readonly double[] QueueShares = [1.0, 0.6, 0.3];
 
     private readonly SemaphoreSlim _slots;
     private readonly int _capacity;
@@ -42,6 +64,8 @@ public sealed class AdmissionGate
     private long _rejectedQueueFull;
     private long _rejectedPredictedWait;
     private long _rejectedQueueTimeout;
+    private readonly long[] _admittedByPriority = new long[3];
+    private readonly long[] _rejectedByPriority = new long[3];
 
     private readonly object _serviceLock = new();
     private double _ewmaServiceMs;
@@ -64,6 +88,28 @@ public sealed class AdmissionGate
     public int Capacity => _capacity;
 
     public async Task<AdmissionResult> EnterAsync(
+        RequestPriority priority,
+        CancellationToken cancellationToken)
+    {
+        var result =
+            await TryEnterAsync(priority, cancellationToken);
+
+        var index = (int)priority;
+
+        if (result == AdmissionResult.Admitted)
+        {
+            Interlocked.Increment(ref _admittedByPriority[index]);
+        }
+        else
+        {
+            Interlocked.Increment(ref _rejectedByPriority[index]);
+        }
+
+        return result;
+    }
+
+    private async Task<AdmissionResult> TryEnterAsync(
+        RequestPriority priority,
         CancellationToken cancellationToken)
     {
         // Fast path: boş slot varsa kuyruğa hiç girmeden geç.
@@ -73,11 +119,15 @@ public sealed class AdmissionGate
             return AdmissionResult.Admitted;
         }
 
+        var share = QueueShares[(int)priority];
+        var maxQueueLength = (int)Math.Ceiling(_maxQueueLength * share);
+        var queueTimeoutMs = Math.Max(1, (int)(_queueTimeoutMs * share));
+
         var waiting = Interlocked.Increment(ref _waiting);
 
         try
         {
-            if (_sheddingEnabled && waiting > _maxQueueLength)
+            if (_sheddingEnabled && waiting > maxQueueLength)
             {
                 Interlocked.Increment(ref _rejectedQueueFull);
                 return AdmissionResult.RejectedQueueFull;
@@ -87,7 +137,7 @@ public sealed class AdmissionGate
             // will not drain before the queue timeout, waiting is pointless -
             // the caller would get the same 503, just 250 ms later and after
             // holding a queue spot that could have gone to someone else.
-            if (_sheddingEnabled && EstimatedQueueWaitMs() > _queueTimeoutMs)
+            if (_sheddingEnabled && EstimatedQueueWaitMs() > queueTimeoutMs)
             {
                 Interlocked.Increment(ref _rejectedPredictedWait);
                 return AdmissionResult.RejectedPredictedWait;
@@ -97,7 +147,7 @@ public sealed class AdmissionGate
             {
                 await _slots.WaitAsync(cancellationToken);
             }
-            else if (!await _slots.WaitAsync(_queueTimeoutMs, cancellationToken))
+            else if (!await _slots.WaitAsync(queueTimeoutMs, cancellationToken))
             {
                 Interlocked.Increment(ref _rejectedQueueTimeout);
                 return AdmissionResult.RejectedQueueTimeout;
@@ -162,7 +212,14 @@ public sealed class AdmissionGate
             Admitted: Interlocked.Read(ref _admitted),
             RejectedQueueFull: Interlocked.Read(ref _rejectedQueueFull),
             RejectedPredictedWait: Interlocked.Read(ref _rejectedPredictedWait),
-            RejectedQueueTimeout: Interlocked.Read(ref _rejectedQueueTimeout));
+            RejectedQueueTimeout: Interlocked.Read(ref _rejectedQueueTimeout),
+            ByPriority: Enum.GetValues<RequestPriority>()
+                .Select(priority => new PriorityAdmissionSnapshot(
+                    priority,
+                    QueueShares[(int)priority],
+                    Interlocked.Read(ref _admittedByPriority[(int)priority]),
+                    Interlocked.Read(ref _rejectedByPriority[(int)priority])))
+                .ToArray());
     }
 
     private void OnAdmitted()

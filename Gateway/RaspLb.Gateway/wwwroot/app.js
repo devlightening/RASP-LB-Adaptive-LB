@@ -12,6 +12,9 @@ const OUTCOMES = [
 
 const BACKEND_COLORS = ["--backend1", "--backend2", "--backend3"];
 
+const PRIORITY_LABELS = { critical: "critical", normal: "normal", sheddable: "sheddable" };
+const PRIORITY_SHARE = { critical: "%100", normal: "%60", sheddable: "%30" };
+
 const state = {
   paused: false,
   last: null,
@@ -131,6 +134,7 @@ function render() {
     `${live.activePolicy} · deadline ${live.deadlineMs} ms · kapasite ${backendCaps}`;
 
   renderKpis(live);
+  renderPriorities(live);
   renderBackends(live);
   renderTraffic(live);
   renderLatency(live);
@@ -156,6 +160,41 @@ function renderKpis(live) {
   $("kpi-shed").classList.toggle("bad", sum("shed") > 0);
   $("kpi-err").textContent = fmt(sum("errors") / seconds);
   $("kpi-err").classList.toggle("bad", sum("errors") > 0);
+}
+
+function renderPriorities(live) {
+  const recent = live.series.slice(-5);
+  const seconds = recent.length || 1;
+  const totals = {};
+
+  for (const s of recent) {
+    for (const p of s.byPriority ?? []) {
+      const t = (totals[p.priority] ??= { onTime: 0, late: 0, shed: 0, errors: 0 });
+      t.onTime += p.onTime;
+      t.late += p.late;
+      t.shed += p.shed;
+      t.errors += p.errors;
+    }
+  }
+
+  const rows = Object.keys(PRIORITY_LABELS).map((name) => {
+    const t = totals[name] ?? { onTime: 0, late: 0, shed: 0, errors: 0 };
+    const all = t.onTime + t.late + t.shed + t.errors;
+    const rate = all ? t.onTime / all : null;
+    const rateCell = rate == null ? "–" : "%" + fmt(rate * 100, 1);
+    const bad = rate != null && rate < 0.95 ? ' class="num unreachable"' : ' class="num"';
+
+    return `<tr>
+      <td>${PRIORITY_LABELS[name]}</td>
+      <td class="num muted">${PRIORITY_SHARE[name]}</td>
+      <td class="num">${fmt(all / seconds)}</td>
+      <td${bad}>${rateCell}</td>
+      <td class="num">${fmt(t.shed / seconds)}</td>
+      <td class="num">${fmt(t.late / seconds)}</td>
+    </tr>`;
+  });
+
+  document.querySelector("#priorities tbody").innerHTML = rows.join("");
 }
 
 function renderBackends(live) {

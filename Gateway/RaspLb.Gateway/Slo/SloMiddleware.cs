@@ -9,6 +9,7 @@ namespace RaspLb.Gateway.Slo;
 public sealed class SloMiddleware
 {
     private const string ShedHeader = "X-Rasp-Shed";
+    private const string PriorityHeader = "X-Rasp-Priority";
 
     private readonly RequestDelegate _next;
     private readonly SloOptions _options;
@@ -45,7 +46,7 @@ public sealed class SloMiddleware
                 !success &&
                 context.Response.Headers.ContainsKey(ShedHeader);
 
-            Record(success, shed, stopwatch.Elapsed.TotalMilliseconds);
+            Record(context, success, shed, stopwatch.Elapsed.TotalMilliseconds);
         }
         catch
         {
@@ -54,13 +55,14 @@ public sealed class SloMiddleware
             // Deadline'ı aşan bir işlem sonunda exception ile de
             // bitebilir (ör. istemci iptali) - yine de SLO'yu
             // kaçırmış sayılır, sadece başarısız değil.
-            Record(success: false, shed: false, stopwatch.Elapsed.TotalMilliseconds);
+            Record(context, success: false, shed: false, stopwatch.Elapsed.TotalMilliseconds);
 
             throw;
         }
     }
 
     private void Record(
+        HttpContext context,
         bool success,
         bool shed,
         double elapsedMs)
@@ -82,6 +84,10 @@ public sealed class SloMiddleware
                     ? RequestOutcomeKind.Shed
                     : RequestOutcomeKind.Error;
 
-        _window.Record(outcome, elapsedMs);
+        _window.Record(
+            outcome,
+            elapsedMs,
+            RecentTrafficWindow.PriorityIndex(
+                context.Request.Headers[PriorityHeader]));
     }
 }

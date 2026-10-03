@@ -8,6 +8,13 @@ public enum RequestOutcomeKind
     Error
 }
 
+public readonly record struct PriorityTraffic(
+    string Priority,
+    int OnTime,
+    int Late,
+    int Shed,
+    int Errors);
+
 public readonly record struct TrafficSecond(
     long UnixSecond,
     int OnTime,
@@ -15,7 +22,8 @@ public readonly record struct TrafficSecond(
     int Shed,
     int Errors,
     double? P50Ms,
-    double? P95Ms);
+    double? P95Ms,
+    IReadOnlyList<PriorityTraffic> ByPriority);
 
 // Son N saniyenin saniye saniye trafiği. SloMetrics sadece başlangıçtan
 // beri birikmiş sayaçları tutuyor; aşırı yükte sistemin "şu an" nasıl
@@ -25,6 +33,12 @@ public readonly record struct TrafficSecond(
 public sealed class RecentTrafficWindow
 {
     public const int WindowSeconds = 120;
+
+    // X-Rasp-Priority başlığının değerleri; sıra Bucket dizilerinin indeksidir.
+    public static readonly string[] Priorities = ["critical", "normal", "sheddable"];
+
+    private static readonly IReadOnlyList<PriorityTraffic> EmptyPriorities =
+        Priorities.Select(p => new PriorityTraffic(p, 0, 0, 0, 0)).ToArray();
 
     private readonly object _lock = new();
     private readonly Bucket[] _buckets = new Bucket[WindowSeconds];
@@ -37,9 +51,19 @@ public sealed class RecentTrafficWindow
         }
     }
 
+    public static int PriorityIndex(
+        string? priority)
+    {
+        var index = Array.IndexOf(Priorities, priority?.Trim().ToLowerInvariant());
+
+        // Başlık yoksa ya da tanınmıyorsa backend gibi "normal" say.
+        return index < 0 ? 1 : index;
+    }
+
     public void Record(
         RequestOutcomeKind outcome,
-        double elapsedMs)
+        double elapsedMs,
+        int priorityIndex = 1)
     {
         var second = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -56,17 +80,21 @@ public sealed class RecentTrafficWindow
             {
                 case RequestOutcomeKind.OnTime:
                     bucket.OnTime++;
+                    bucket.OnTimeBy[priorityIndex]++;
                     bucket.SuccessLatencies.Add(elapsedMs);
                     break;
                 case RequestOutcomeKind.Late:
                     bucket.Late++;
+                    bucket.LateBy[priorityIndex]++;
                     bucket.SuccessLatencies.Add(elapsedMs);
                     break;
                 case RequestOutcomeKind.Shed:
                     bucket.Shed++;
+                    bucket.ShedBy[priorityIndex]++;
                     break;
                 default:
                     bucket.Errors++;
+                    bucket.ErrorsBy[priorityIndex]++;
                     break;
             }
         }
@@ -86,7 +114,7 @@ public sealed class RecentTrafficWindow
 
                 if (bucket.UnixSecond != second)
                 {
-                    series.Add(new TrafficSecond(second, 0, 0, 0, 0, null, null));
+                    series.Add(new TrafficSecond(second, 0, 0, 0, 0, null, null, EmptyPriorities));
                     continue;
                 }
 
@@ -100,7 +128,15 @@ public sealed class RecentTrafficWindow
                     bucket.Shed,
                     bucket.Errors,
                     Percentile(sorted, 0.50),
-                    Percentile(sorted, 0.95)));
+                    Percentile(sorted, 0.95),
+                    Priorities
+                        .Select((p, i) => new PriorityTraffic(
+                            p,
+                            bucket.OnTimeBy[i],
+                            bucket.LateBy[i],
+                            bucket.ShedBy[i],
+                            bucket.ErrorsBy[i]))
+                        .ToArray()));
             }
         }
 
@@ -128,6 +164,10 @@ public sealed class RecentTrafficWindow
         public int Late;
         public int Shed;
         public int Errors;
+        public readonly int[] OnTimeBy = new int[3];
+        public readonly int[] LateBy = new int[3];
+        public readonly int[] ShedBy = new int[3];
+        public readonly int[] ErrorsBy = new int[3];
         public readonly List<double> SuccessLatencies = new();
 
         public void Reset(long second)
@@ -137,6 +177,10 @@ public sealed class RecentTrafficWindow
             Late = 0;
             Shed = 0;
             Errors = 0;
+            Array.Clear(OnTimeBy);
+            Array.Clear(LateBy);
+            Array.Clear(ShedBy);
+            Array.Clear(ErrorsBy);
             SuccessLatencies.Clear();
         }
     }
