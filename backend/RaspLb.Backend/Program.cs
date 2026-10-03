@@ -38,8 +38,7 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(
     new BrownoutState(
         GetBool("BROWNOUT_ENABLED", true),
-        GetDouble("BROWNOUT_QUEUE_WAIT_MS", 50),
-        GetInt("BROWNOUT_MIN_DWELL_MS", 2000)));
+        GetDouble("BROWNOUT_QUEUE_WAIT_MS", 40)));
 
 var app = builder.Build();
 

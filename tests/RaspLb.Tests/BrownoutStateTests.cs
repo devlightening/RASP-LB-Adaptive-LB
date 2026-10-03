@@ -4,44 +4,99 @@ namespace RaspLb.Tests;
 
 public class BrownoutStateTests
 {
-    [Fact]
-    public void Trips_when_queue_wait_reaches_the_threshold()
-    {
-        var state = new BrownoutState(enabled: true, tripQueueWaitMs: 50, minDwellMs: 0);
+    private long _nowMs;
 
-        Assert.False(state.ShouldReduce(49));
-        Assert.True(state.ShouldReduce(50));
+    private BrownoutState Create(
+        bool enabled = true,
+        double targetQueueWaitMs = 40,
+        double draw = 0.5) =>
+        new(enabled, targetQueueWaitMs, () => _nowMs, () => draw);
+
+    // Feeds the same signal every 50 ms for the given duration.
+    private void Run(
+        BrownoutState state,
+        double queueWaitMs,
+        int durationMs)
+    {
+        for (var t = 0; t < durationMs; t += 50)
+        {
+            _nowMs += 50;
+            state.ShouldReduce(queueWaitMs);
+        }
     }
 
     [Fact]
-    public void Recovers_only_after_the_queue_stays_calm_for_the_whole_dwell()
+    public void Stays_at_full_enrichment_while_the_queue_is_below_target()
     {
-        var state = new BrownoutState(enabled: true, tripQueueWaitMs: 50, minDwellMs: 100);
-        Thread.Sleep(120); // let the initial dwell expire
+        var state = Create();
 
-        Assert.True(state.ShouldReduce(80));
+        Run(state, queueWaitMs: 20, durationMs: 5_000);
 
-        Thread.Sleep(120);
-        Assert.True(state.ShouldReduce(60));  // still above recovery: calm timer restarts
-        Assert.True(state.ShouldReduce(0));   // calm, but only for ~0 ms
-
-        Thread.Sleep(60);
-        Assert.True(state.ShouldReduce(0));   // calm for ~60 ms < dwell
-
-        Thread.Sleep(60);
-        Assert.False(state.ShouldReduce(0));  // calm for the whole dwell
+        var snapshot = state.GetSnapshot(20);
+        Assert.Equal(1.0, snapshot.Dimmer);
+        Assert.Equal(0, snapshot.ReducedModeRequests);
+        Assert.Equal(0, snapshot.Activations);
     }
 
     [Fact]
-    public void Snapshot_reevaluates_so_mode_does_not_stick_after_traffic_stops()
+    public void Dims_under_sustained_queueing_and_skips_enrichment()
     {
-        var state = new BrownoutState(enabled: true, tripQueueWaitMs: 50, minDwellMs: 50);
-        Thread.Sleep(70);
-        Assert.True(state.ShouldReduce(100));
+        var state = Create(draw: 0.5);
 
-        Thread.Sleep(30);
-        state.GetSnapshot(0); // starts the calm period without any request
-        Thread.Sleep(80);
+        Run(state, queueWaitMs: 200, durationMs: 2_000);
+
+        var snapshot = state.GetSnapshot(200);
+        Assert.True(snapshot.Dimmer < 0.5);
+        Assert.True(snapshot.ReducedModeActive);
+        Assert.Equal(1, snapshot.Activations);
+        Assert.True(state.ShouldReduce(200)); // draw 0.5 >= dimmer
+    }
+
+    [Fact]
+    public void A_short_spike_does_not_switch_brownout_on()
+    {
+        var state = Create();
+
+        Run(state, queueWaitMs: 300, durationMs: 50);
+        Run(state, queueWaitMs: 0, durationMs: 1_000);
+
+        Assert.Equal(0, state.GetSnapshot(0).Activations);
+    }
+
+    [Fact]
+    public void Recovers_gradually_after_overload_ends()
+    {
+        var state = Create();
+        Run(state, queueWaitMs: 200, durationMs: 2_000);
+        var dimmed = state.GetSnapshot(200).Dimmer;
+
+        // The smoothed signal needs ~0.8 s to fall below target from 200 ms,
+        // so θ only starts climbing after that - a brief lull is not recovery.
+        Run(state, queueWaitMs: 0, durationMs: 500);
+        Assert.Equal(dimmed, state.GetSnapshot(0).Dimmer);
+
+        Run(state, queueWaitMs: 0, durationMs: 1_000);
+        var partly = state.GetSnapshot(0).Dimmer;
+
+        Run(state, queueWaitMs: 0, durationMs: 3_000);
+        var snapshot = state.GetSnapshot(0);
+
+        Assert.True(partly > dimmed && partly < 1.0);
+        Assert.Equal(1.0, snapshot.Dimmer);
+        Assert.False(snapshot.ReducedModeActive);
+    }
+
+    [Fact]
+    public void Snapshot_advances_the_controller_without_traffic()
+    {
+        var state = Create();
+        Run(state, queueWaitMs: 200, durationMs: 2_000);
+
+        for (var i = 0; i < 40; i++)
+        {
+            _nowMs += 100;
+            state.GetSnapshot(0);
+        }
 
         Assert.False(state.GetSnapshot(0).ReducedModeActive);
     }
@@ -49,9 +104,12 @@ public class BrownoutStateTests
     [Fact]
     public void Never_reduces_when_disabled()
     {
-        var state = new BrownoutState(enabled: false, tripQueueWaitMs: 50, minDwellMs: 0);
+        var state = Create(enabled: false);
 
-        Assert.False(state.ShouldReduce(10_000));
-        Assert.Equal(0, state.GetSnapshot(10_000).Activations);
+        Run(state, queueWaitMs: 10_000, durationMs: 2_000);
+
+        var snapshot = state.GetSnapshot(10_000);
+        Assert.Equal(1.0, snapshot.Dimmer);
+        Assert.Equal(0, snapshot.ReducedModeRequests);
     }
 }

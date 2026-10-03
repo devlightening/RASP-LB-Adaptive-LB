@@ -95,7 +95,7 @@ function detectEvents(live) {
 
       if (b) {
         if (!prev.reduced && next.reduced) {
-          log(at, `${d.id} brownout'a geçti — tahmini bekleme ${fmt(b.brownout.activationQueueWaitMs)} ms (eşik ${fmt(b.brownout.tripQueueWaitMs)} ms)`);
+          log(at, `${d.id} brownout'a geçti — kuyruk bekleme ${fmt(b.brownout.activationQueueWaitMs)} ms (hedef ${fmt(b.brownout.tripQueueWaitMs)} ms)`);
         }
         if (prev.reduced && !next.reduced) log(at, `${d.id} tam moda döndü`);
 
@@ -211,8 +211,8 @@ function renderBackends(live) {
     const fill = Math.min(1, a.active / a.capacity) * 100;
     const mode = !b.brownout.enabled
       ? `<span class="mode-off">kapalı</span>`
-      : b.brownout.reducedModeActive
-        ? `<span class="mode-reduced">Azaltılmış</span>`
+      : b.brownout.dimmer < 0.99
+        ? `<span class="mode-reduced">%${fmt(b.brownout.dimmer * 100)}</span>`
         : "Tam";
     const queueLimit = a.sheddingEnabled ? ` <span class="muted">/ ${a.maxQueueLength}</span>` : "";
 
