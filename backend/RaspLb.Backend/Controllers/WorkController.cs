@@ -52,9 +52,12 @@ public class WorkController : ControllerBase
         if (admission != AdmissionResult.Admitted)
         {
             var reason =
-                admission == AdmissionResult.RejectedQueueFull
-                    ? "queue-full"
-                    : "queue-timeout";
+                admission switch
+                {
+                    AdmissionResult.RejectedQueueFull => "queue-full",
+                    AdmissionResult.RejectedPredictedWait => "predicted-wait",
+                    _ => "queue-timeout"
+                };
 
             Response.Headers.RetryAfter = "1";
             Response.Headers["X-Rasp-Shed"] = reason;

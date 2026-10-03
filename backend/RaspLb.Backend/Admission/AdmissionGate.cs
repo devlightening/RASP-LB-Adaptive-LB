@@ -4,6 +4,7 @@ public enum AdmissionResult
 {
     Admitted,
     RejectedQueueFull,
+    RejectedPredictedWait,
     RejectedQueueTimeout
 }
 
@@ -18,6 +19,7 @@ public readonly record struct AdmissionSnapshot(
     int QueueTimeoutMs,
     long Admitted,
     long RejectedQueueFull,
+    long RejectedPredictedWait,
     long RejectedQueueTimeout);
 
 // Backend'in kapasite kapısı. Önceden controller'daki çıplak bir
@@ -38,6 +40,7 @@ public sealed class AdmissionGate
     private int _waiting;
     private long _admitted;
     private long _rejectedQueueFull;
+    private long _rejectedPredictedWait;
     private long _rejectedQueueTimeout;
 
     private readonly object _serviceLock = new();
@@ -78,6 +81,16 @@ public sealed class AdmissionGate
             {
                 Interlocked.Increment(ref _rejectedQueueFull);
                 return AdmissionResult.RejectedQueueFull;
+            }
+
+            // Fail fast: if the requests already queued ahead of this one
+            // will not drain before the queue timeout, waiting is pointless -
+            // the caller would get the same 503, just 250 ms later and after
+            // holding a queue spot that could have gone to someone else.
+            if (_sheddingEnabled && EstimatedQueueWaitMs() > _queueTimeoutMs)
+            {
+                Interlocked.Increment(ref _rejectedPredictedWait);
+                return AdmissionResult.RejectedPredictedWait;
             }
 
             if (!_sheddingEnabled)
@@ -148,6 +161,7 @@ public sealed class AdmissionGate
             QueueTimeoutMs: _queueTimeoutMs,
             Admitted: Interlocked.Read(ref _admitted),
             RejectedQueueFull: Interlocked.Read(ref _rejectedQueueFull),
+            RejectedPredictedWait: Interlocked.Read(ref _rejectedPredictedWait),
             RejectedQueueTimeout: Interlocked.Read(ref _rejectedQueueTimeout));
     }
 

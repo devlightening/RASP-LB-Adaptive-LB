@@ -65,3 +65,27 @@ docker run --rm -i --network rasplb_default -e BASE_URL=http://gateway:8080 graf
 ```
 
 Panel: http://localhost:5200/
+
+## İyileştirme turu: reddedilen 503'ler ve kapıda erken reddetme (2026-10-03)
+
+Yukarıdaki "Açık kalanlar" listesinin 1. ve 2. maddeleri, her seferinde tek değişiklikle aynı k6 senaryosunda ölçüldü. Her satır tek bir koşu.
+
+| | A: İlk sürüm | B: + reddedilenler EWMA gecikmeden hariç | C: + kapıda erken reddetme |
+|---|---|---|---|
+| Başarılı istek (toplam) | 40.581 | 40.586 | 40.601 |
+| 350/sn fazında zamanında/sn | 228 | 228 | 227 |
+| Reddetmeler (b1 / b2 / b3) | 4.299 / 871 / 1.523 | 2.449 / 2.237 / 2.002 | 2.489 / 2.160 / 2.024 |
+| Bekledikten sonra reddedilen | 2.061 | 2.909 | 371 |
+| Reddedilen isteğin ort. süresi* | 78 ms | 110 ms | 15 ms |
+| Ortalama yanıt süresi (tümü) | 147 ms | 160 ms | 149 ms |
+| p95 (2xx) | 321 ms | 348 ms | 352 ms |
+
+\* k6'nın tüm istekler ve 2xx'ler için verdiği ortalamalardan türetildi.
+
+**B — hipotez doğrulandı ama sonuç kötüleşti.** Gateway artık backend'in reddettiği yanıtları (`DestinationRequestOutcome.Shed`) tanıyor. Bunlar sadece hata EWMA'sını besliyor, gecikme EWMA'sına girmiyor. Reddetmeler backend'lere dengeli dağıldı; yani hızlı 503'ler gerçekten backend1'e trafik çekiyordu. Ancak backend1'in anında yaptığı reddetmeler bu sefer backend2 ve backend3'te 250 ms bekledikten sonra yapıldı ve reddedilenler daha uzun bekledi. Eski davranış yanlış nedenle iyi sonuç veriyordu.
+
+**C — asıl kaldıraç.** Backend, öndeki istekler kuyruk timeout'undan önce bitmeyecekse (tahmini bekleme > `QUEUE_TIMEOUT_MS`) isteği kapıda hemen reddediyor (`X-Rasp-Shed: predicted-wait`). Bekledikten sonra reddedilenler %87 azaldı, reddedilen istekler ortalama 15 ms'de dönüyor ve kuyruklar daha kısa kaldı (backend3 en fazla 16).
+
+**Değişmeyen:** Kabul edilen iş miktarı. Sistem kapasitenin sınırında çalışıyor; bu turun kazancı reddedilen kullanıcının beklediği süre. Kabul edilen isteklerin p95'i A'ya göre ~30 ms yüksek. Tek koşuda bu gürültü olabilir; daha düşük p95 istenirse `QUEUE_TIMEOUT_MS` küçültülebilir, bu da daha çok reddetme demek.
+
+**Sınırlama:** Her yapılandırma bir kez koşuldu. Kesin sonuç için her biri en az 3 kez tekrarlanmalı.

@@ -213,7 +213,8 @@ app.MapGet("/debug/metrics", () =>
                 snapshot.ForwarderFailures,
                 snapshot.Timeouts,
                 snapshot.Cancellations,
-                snapshot.UnhandledExceptions
+                snapshot.UnhandledExceptions,
+                snapshot.Sheds
             };
         });
 
@@ -341,6 +342,12 @@ static DestinationRequestOutcome ClassifyProxyOutcome(
 
             _ => DestinationRequestOutcome.ForwarderFailure
         };
+    }
+
+    if (context.Response.StatusCode == StatusCodes.Status503ServiceUnavailable &&
+        context.Response.Headers.ContainsKey("X-Rasp-Shed"))
+    {
+        return DestinationRequestOutcome.Shed;
     }
 
     return context.Response.StatusCode switch

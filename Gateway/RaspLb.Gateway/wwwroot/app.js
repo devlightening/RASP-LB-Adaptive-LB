@@ -81,7 +81,7 @@ function detectEvents(live) {
     const next = {
       reachable: !!b,
       reduced: b ? b.brownout.reducedModeActive : false,
-      shedTotal: b ? b.admission.rejectedQueueFull + b.admission.rejectedQueueTimeout : 0,
+      shedTotal: b ? b.admission.rejectedQueueFull + b.admission.rejectedPredictedWait + b.admission.rejectedQueueTimeout : 0,
       shedding: false,
       quiet: 0,
     };
@@ -184,7 +184,7 @@ function renderBackends(live) {
       <td class="num">${a.waiting}${queueLimit}</td>
       <td class="num">${fmt(a.estimatedQueueWaitMs)} ms</td>
       <td>${mode}</td>
-      <td class="num">${a.sheddingEnabled ? `${fmt(a.rejectedQueueFull)} / ${fmt(a.rejectedQueueTimeout)}` : `<span class="mode-off">kapalı</span>`}</td>
+      <td class="num">${a.sheddingEnabled ? `${fmt(a.rejectedQueueFull + a.rejectedPredictedWait)} / ${fmt(a.rejectedQueueTimeout)}` : `<span class="mode-off">kapalı</span>`}</td>
       <td class="num">${fmt(d.ewmaLatencyMs)} ms</td>
     </tr>`;
   });

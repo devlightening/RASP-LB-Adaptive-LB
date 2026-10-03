@@ -9,7 +9,12 @@ public enum DestinationRequestOutcome
     ForwarderFailure,
     Timeout,
     Canceled,
-    UnhandledException
+    UnhandledException,
+
+    // Backend deliberately rejected the request because its queue was full
+    // (503 + X-Rasp-Shed). An overload signal, not a measure of how long
+    // the backend takes to do the work.
+    Shed
 }
 
 public readonly record struct DestinationMetricsSnapshot(
@@ -25,7 +30,8 @@ public readonly record struct DestinationMetricsSnapshot(
     long ForwarderFailures,
     long Timeouts,
     long Cancellations,
-    long UnhandledExceptions)
+    long UnhandledExceptions,
+    long Sheds)
 {
     public double FailureRate =>
         Samples == 0
@@ -52,6 +58,8 @@ public sealed class DestinationMetrics
     private long _timeouts;
     private long _cancellations;
     private long _unhandledExceptions;
+    private long _sheds;
+    private bool _hasLatencySample;
 
     public long Samples
     {
@@ -128,7 +136,8 @@ public sealed class DestinationMetrics
                 ForwarderFailures: _forwarderFailures,
                 Timeouts: _timeouts,
                 Cancellations: _cancellations,
-                UnhandledExceptions: _unhandledExceptions);
+                UnhandledExceptions: _unhandledExceptions,
+                Sheds: _sheds);
         }
     }
 
@@ -150,21 +159,25 @@ public sealed class DestinationMetrics
             var errorSample =
                 destinationFailure ? 1.0 : 0.0;
 
-            if (_samples == 0)
-            {
-                _ewmaLatencyMs = latencyMs;
-                _ewmaErrorRate = errorSample;
-            }
-            else
+            // A shed 503 comes back in ~1 ms. Folding that into the latency
+            // EWMA would make the most overloaded backend look like the
+            // fastest one, so sheds only feed the error signal.
+            if (outcome != DestinationRequestOutcome.Shed)
             {
                 _ewmaLatencyMs =
-                    latencyAlpha * latencyMs +
-                    (1 - latencyAlpha) * _ewmaLatencyMs;
+                    _hasLatencySample
+                        ? latencyAlpha * latencyMs +
+                          (1 - latencyAlpha) * _ewmaLatencyMs
+                        : latencyMs;
 
-                _ewmaErrorRate =
-                    errorAlpha * errorSample +
-                    (1 - errorAlpha) * _ewmaErrorRate;
+                _hasLatencySample = true;
             }
+
+            _ewmaErrorRate =
+                _samples == 0
+                    ? errorSample
+                    : errorAlpha * errorSample +
+                      (1 - errorAlpha) * _ewmaErrorRate;
 
             _samples++;
 
@@ -189,7 +202,8 @@ public sealed class DestinationMetrics
             DestinationRequestOutcome.HttpServerError or
             DestinationRequestOutcome.ForwarderFailure or
             DestinationRequestOutcome.Timeout or
-            DestinationRequestOutcome.UnhandledException;
+            DestinationRequestOutcome.UnhandledException or
+            DestinationRequestOutcome.Shed;
     }
 
     private void IncrementOutcome(
@@ -220,6 +234,9 @@ public sealed class DestinationMetrics
                 break;
             case DestinationRequestOutcome.UnhandledException:
                 _unhandledExceptions++;
+                break;
+            case DestinationRequestOutcome.Shed:
+                _sheds++;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(

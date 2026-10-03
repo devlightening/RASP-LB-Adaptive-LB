@@ -137,7 +137,12 @@ Vizyon belgesi açık: **yeni özellik ekleme, önce mevcut regresyonu anla.**
 
 **Durum (2026-10-03): Tamamlandı (ilk sürüm), açık döngülü k6 testiyle doğrulandı.** `backend/RaspLb.Backend/Admission/AdmissionGate.cs` kuyruğu uzunluk (kapasite×4) ve bekleme süresi (250 ms) ile sınırlıyor; sınır aşılırsa `503`, `Retry-After` ve `X-Rasp-Shed` dönüyor. Reddedilen istekler gateway'de ayrı sayılıyor ve panelde gösteriliyor. 350 istek/sn aşırı yükte shedding kapalıyken p95 ~7,3 sn ve zamanında yanıt oranı %0'dı; açıkken p95 358 ms, deadline aşımı 0 ve fazla yük 503 ile reddedildi. Ayrıntılar `benchmarks/manual/SUMMARY-asama-f-shedding.md`, senaryo `benchmarks/load/overload.js`.
 
-**Açık kalan:** Reddedilen hızlı 503'ler gateway'deki EWMA gecikmeye karışıyor ve backend1'e fazla yük yönlendiriliyor olabilir. `queue-timeout` ile reddetme yerine kapıda erken reddetme düşünülebilir. Gateway'in reddedilen isteği başka backend'e retry etmesi henüz kapsamda değil.
+**İyileştirme turu (2026-10-03):**
+- Gateway, backend'in reddettiği yanıtları ayrı bir sonuç olarak tanıyor; bunlar gecikme EWMA'sına girmiyor. Hızlı 503'lerin backend1'e trafik çektiği bu sayede doğrulandı.
+- Backend, tahmini bekleme kuyruk timeout'unu aşıyorsa isteği kapıda hemen reddediyor.
+- Kabul edilen iş miktarı değişmedi. Reddedilen isteğin ortalama süresi 78 ms'den 15 ms'ye indi; bekledikten sonra reddetme %87 azaldı. Ayrıntılar özet dosyasında.
+
+**Açık kalan:** Sonuçlar tek koşuya dayanıyor; tekrarlı ölçüm gerekli. Gateway'in reddedilen isteği başka backend'e retry etmesi henüz kapsamda değil. Brownout orta yükte backend3'te hâlâ ara ara açılıp kapanıyor.
 
 ---
 
