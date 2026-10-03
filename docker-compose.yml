@@ -12,6 +12,8 @@ services:
       BASE_LATENCY_MS: 40
       ERROR_RATE: 0
       MAX_CONCURRENCY: 2
+      SHEDDING_ENABLED: ${SHEDDING_ENABLED:-true}
+      BROWNOUT_ENABLED: ${BROWNOUT_ENABLED:-true}
     ports:
       - "5101:8080"
 
@@ -27,6 +29,8 @@ services:
       BASE_LATENCY_MS: 70
       ERROR_RATE: 0
       MAX_CONCURRENCY: 8
+      SHEDDING_ENABLED: ${SHEDDING_ENABLED:-true}
+      BROWNOUT_ENABLED: ${BROWNOUT_ENABLED:-true}
     ports:
       - "5102:8080"
 
@@ -42,6 +46,8 @@ services:
       BASE_LATENCY_MS: 120
       ERROR_RATE: 0
       MAX_CONCURRENCY: 8
+      SHEDDING_ENABLED: ${SHEDDING_ENABLED:-true}
+      BROWNOUT_ENABLED: ${BROWNOUT_ENABLED:-true}
     ports:
       - "5103:8080"
 

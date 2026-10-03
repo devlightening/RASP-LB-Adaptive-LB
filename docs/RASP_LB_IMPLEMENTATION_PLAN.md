@@ -92,38 +92,52 @@ Vizyon belgesi açık: **yeni özellik ekleme, önce mevcut regresyonu anla.**
 
 ## Aşama D — SLO ve deadline farkındalığı
 
-**Nerede:** Yeni middleware/servis, `DestinationMetricsStore`'a goodput sayaçları eklenebilir.
+**Durum (2026-09-18): Tamamlandı (gözlemsel ilk sürüm).** `Slo/SloOptions.cs`, `Slo/SloMetrics.cs`, `Slo/SloMiddleware.cs` eklendi. Middleware proxy pipeline'ının en dışında çalışıp mantıksal isteğin (retry dahil) uçtan uca süresini ölçüyor; `/debug/slo` üzerinden `totalRequests/successes/deadlineExceeded/goodput/goodputRate` yayımlanıyor. Detaylar ve doğrulama `benchmarks/manual/SUMMARY-asama-d-slo.md`.
+
+**Nerede:** `Gateway/RaspLb.Gateway/Slo/` (yeni), `Program.cs` (DI + `/debug/slo` endpoint), `appsettings.json` (`Slo` bölümü).
 
 **Yapılacaklar:**
-1. İstek başına bir deadline tanımla (örn. header ile veya sabit `500ms`).
-2. "Goodput" say: SLO içinde başarıyla tamamlanan istek sayısı — ayrı bir sayaç.
-3. `/debug/metrics`'e goodput ve deadline-aşan istek sayısını ekle.
+1. **Tamamlandı:** İstek başına sabit deadline (`Slo:DeadlineMs`, varsayılan 500ms). Header ile istek-bazlı deadline henüz yok.
+2. **Tamamlandı:** Goodput sayacı — hem 2xx hem deadline içinde tamamlanan istekler.
+3. **Tamamlandı:** `/debug/slo` endpoint'i (ayrı, `/debug/metrics`'i kirletmedi — o hâlâ destination-bazlı, bu mantıksal-istek-bazlı).
 
-**Doğrulama:** Yük artırıldığında (benchmark concurrency'yi 20'den 50'ye çıkar), goodput eğrisinin ham throughput'tan ne zaman ayrıştığını gözle.
+**Doğrulama:** Concurrency=20 sağlıklı senaryoda goodputRate=1.0 (350/350). Concurrency=50'ye çıkarılınca success rate hâlâ %100 iken (kapasite kapısı sadece kuyruklandırıyor, reddetmiyor) goodput %96.3'e düştü (337/350) — ham throughput'un gizlediği kalite bozulması yakalandı. Beklenen ayrışma gözlendi.
+
+**Açık kalan:** Deadline aşımı istemciye erken iletilmiyor (sadece gözlemleniyor) — gerçek "deadline'da kes/reddet" davranışı Aşama F'ye (load shedding) daha yakın.
 
 ---
 
+## Ek — Canlı izleme paneli (dashboard)
+
+**Durum (2026-09-18): Tamamlandı.** `Gateway/RaspLb.Gateway/wwwroot/` altına bağımsız (build adımı gerektirmeyen) bir tek-sayfa dashboard eklendi: `index.html`, `style.css`, `app.js`. Gateway artık `http://localhost:5200/` adresinde bu paneli sunuyor (`app.UseDefaultFiles()`/`UseStaticFiles()`, `/api/{**catch-all}` proxy rotasıyla çakışmıyor). Yeni bir `/debug/config` endpoint'i aktif policy, SLO deadline, retry ayarları ve backend kapasitelerini yayımlıyor.
+
+İçerik: KPI satırı (goodput oranı, toplam istek, retry denemesi, SLO aşımı), ham başarı vs goodput karşılaştırma metre çifti, backend istek payı bar grafiği (kapasite rozetli), canlı gecikme çizgi grafiği (crosshair + tooltip, sayfa açık kaldıkça birikir), backend başına başarı/hata yığın çubuğu. Her kart için "Tablo görünümü" erişilebilirlik alternatifi var. Renk paleti `dataviz` skill'inin validator script'iyle doğrulandı (3 kategorik renk, ışık ve karanlık modda ALL CHECKS PASS). Karanlık mod `prefers-color-scheme` ile otomatik.
+
+2 saniyede bir `/debug/metrics`, `/debug/retries`, `/debug/slo`'yu polling ile güncelliyor; grafik yeniden çizilirken imleç pozisyonu korunuyor (ilk sürümde bu bir bug'dı — her yenilemede tooltip kayboluyordu — düzeltildi).
+
+**Sınırlama:** Şu an sadece tarayıcıdan `localhost:5200`'e erişimle çalışıyor (local demo). Genel internete açmak/harici load-test aracı bağlamak bu işin kapsamında değil — bilinçli bir tercih, bkz. sohbet kararı (sentetik iş yükü gerçek internet trafiğinden fayda görmüyor, güvenlik/maliyet riski var).
+
 ## Aşama E — Brownout
 
-**Nerede:** `WorkController.cs` (backend'e "azaltılmış mod" ekle), gateway tarafında bir sinyal/karar mekanizması.
+**Durum (2026-09-18): Tamamlandı (backend-yerel ilk sürüm).** `backend/RaspLb.Backend/Brownout/BrownoutState.cs` eklendi. `WorkController`, çekirdek işten sonra kendi doluluk oranına (`activeRequestsAtStart/MaxConcurrency`) göre opsiyonel "zenginleştirme" adımını (30ms) atlıyor/atlamıyor. Hysteresis (threshold=0.8, recovery=0.6, min dwell=2000ms) kontrollü testle doğrulandı — ayrıntılar `benchmarks/manual/SUMMARY-asama-e-brownout.md`.
+
+**Nerede:** `backend/RaspLb.Backend/Brownout/BrownoutState.cs` (yeni), `WorkController.cs`, `Program.cs` (backend, DI + `/debug/brownout`).
 
 **Yapılacaklar:**
-1. `WorkController`'a zorunlu/opsiyonel iş ayrımı ekle (örn. sahte bir "zenginleştirme" adımı ekleyip yük yüksekken atla).
-2. Hysteresis: modun sık açılıp kapanmasını önlemek için minimum bekleme süresi.
+1. **Tamamlandı:** `WorkController`'a zorunlu/opsiyonel iş ayrımı eklendi (`Task.Delay(EnrichmentLatencyMs)`, yük yüksekken atlanıyor).
+2. **Tamamlandı:** Hysteresis — trip ve recovery için ayrı eşikler (0.8 / 0.6) + 2000ms minimum bekleme; 0.1sn sonraki tek istekte modun değişmediği, 2.2sn sonra doğru geri döndüğü doğrulandı.
 
-**Doğrulama:** Tam ve azaltılmış modun maliyet farkını ve kullanım oranını raporla.
+**Doğrulama:** Backend1 (cap=2) üzerinde tek istek → `Full`; 2 eşzamanlı istek → 2. istek `Reduced`; hemen ardından düşük yükte bile dwell dolmadan `Reduced` kaldı; dwell dolunca `Full`'a döndü.
+
+**Güncelleme (2026-10-03):** Dashboard gözleminde doluluk sinyalinin normal yükte bile brownout'u tetiklediği görüldü (isteklerin %84'ü azaltılmış modda). Sinyal, tahmini kuyruk bekleme süresine taşındı (eşik 50 ms). Toparlanma için 2 sn kesintisiz sakinlik şartı eklendi ve durum okuma anında yeniden hesaplanıyor. Normal yükte azaltılmış mod oranı %31'e indi. Durum artık panelde görünüyor. Ayrıntılar `benchmarks/manual/SUMMARY-asama-f-shedding.md`.
 
 ---
 
 ## Aşama F — Load shedding / admission control
 
-**Nerede:** `WorkController.cs`'deki `SemaphoreSlim` zaten bir kapasite kapısı — bunun önüne sınırlı bir bekleme kuyruğu ve erken red (429/503 + `Retry-After`) ekle.
+**Durum (2026-10-03): Tamamlandı (ilk sürüm), açık döngülü k6 testiyle doğrulandı.** `backend/RaspLb.Backend/Admission/AdmissionGate.cs` kuyruğu uzunluk (kapasite×4) ve bekleme süresi (250 ms) ile sınırlıyor; sınır aşılırsa `503`, `Retry-After` ve `X-Rasp-Shed` dönüyor. Reddedilen istekler gateway'de ayrı sayılıyor ve panelde gösteriliyor. 350 istek/sn aşırı yükte shedding kapalıyken p95 ~7,3 sn ve zamanında yanıt oranı %0'dı; açıkken p95 358 ms, deadline aşımı 0 ve fazla yük 503 ile reddedildi. Ayrıntılar `benchmarks/manual/SUMMARY-asama-f-shedding.md`, senaryo `benchmarks/load/overload.js`.
 
-**Yapılacaklar:**
-1. `CapacityGate.WaitAsync` çağrısına `timeout` ekle; süre dolarsa `429`/`503` dön.
-2. Reddedilen istek sayısını ayrı say (başarı oranından gizleme).
-
-**Doğrulama:** Sürekli aşırı yük altında (concurrency >> toplam kapasite) kuyruk/bellek büyümesinin sınırlı kaldığını göster.
+**Açık kalan:** Reddedilen hızlı 503'ler gateway'deki EWMA gecikmeye karışıyor ve backend1'e fazla yük yönlendiriliyor olabilir. `queue-timeout` ile reddetme yerine kapıda erken reddetme düşünülebilir. Gateway'in reddedilen isteği başka backend'e retry etmesi henüz kapsamda değil.
 
 ---
 

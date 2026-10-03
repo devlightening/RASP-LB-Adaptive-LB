@@ -1,0 +1,329 @@
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --line: rgba(11, 11, 11, 0.10);
+
+  --backend1: #2a78d6;
+  --backend2: #eb6834;
+  --backend3: #1baf7a;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --line: rgba(255, 255, 255, 0.10);
+
+    --backend1: #3987e5;
+    --backend2: #d95926;
+    --backend3: #199e70;
+
+    --critical: #e66767;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --line: rgba(255, 255, 255, 0.10);
+  --backend1: #3987e5;
+  --backend2: #d95926;
+  --backend3: #199e70;
+  --critical: #e66767;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+
+.muted { color: var(--muted); }
+
+section { margin-top: 24px; }
+
+/* header */
+
+.top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.top .spacer { flex: 1; }
+
+#status.live::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--good);
+}
+
+#status.down::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--critical);
+}
+
+button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--axis); }
+
+/* kpis */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.kpis > div {
+  padding: 10px 14px;
+  border-left: 1px solid var(--line);
+}
+
+.kpis > div:first-child { border-left: 0; }
+
+.kpis .label {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.kpis .value {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpis .value.bad { color: var(--critical); }
+
+.kpis .note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* table */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  vertical-align: bottom;
+}
+
+tbody tr:last-child td { border-bottom: 0; }
+
+.num { text-align: right; }
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 7px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.meter {
+  display: inline-block;
+  width: 70px;
+  height: 6px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--grid);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--ink-2);
+  border-radius: 3px;
+}
+
+.mode-reduced { color: var(--serious); font-weight: 600; }
+.mode-off { color: var(--muted); }
+.unreachable { color: var(--critical); }
+
+/* charts */
+
+.charts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+figure {
+  margin: 0;
+  padding: 12px 14px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+figcaption {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+figcaption h2 { margin: 0; }
+
+.legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.legend .swatch { width: 9px; height: 9px; margin-right: 5px; }
+
+.chart { height: 170px; margin-top: 6px; position: relative; }
+
+.chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.chart text {
+  font-size: 11px;
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .end-label { fill: var(--ink-2); }
+
+.tooltip {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltip .row { display: flex; gap: 10px; justify-content: space-between; }
+
+/* events */
+
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.events li {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.events li:last-child { border-bottom: 0; }
+
+.events time {
+  color: var(--muted);
+  margin-right: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+footer {
+  margin-top: 20px;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis > div { border-left: 0; border-top: 1px solid var(--line); }
+  .kpis > div:nth-child(-n+2) { border-top: 0; }
+}

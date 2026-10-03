@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RASP-LB</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>RASP-LB</h1>
+    <span id="config" class="muted"></span>
+    <span class="spacer"></span>
+    <span id="status" class="muted">bağlanıyor…</span>
+    <button id="pause" type="button">Duraklat</button>
+  </header>
+
+  <section class="kpis" aria-label="Son 5 saniye">
+    <div><span class="label">İstek/sn</span><span id="kpi-rps" class="value">–</span></div>
+    <div><span class="label">Zamanında</span><span id="kpi-ontime" class="value">–</span></div>
+    <div><span class="label">p95</span><span id="kpi-p95" class="value">–</span></div>
+    <div><span class="label">Reddedilen/sn</span><span id="kpi-shed" class="value">–</span></div>
+    <div><span class="label">Hata/sn</span><span id="kpi-err" class="value">–</span></div>
+    <p class="note muted">Son 5 saniye. Zamanında = 2xx ve deadline içinde.</p>
+  </section>
+
+  <section>
+    <h2>Backend'ler</h2>
+    <div class="table-wrap">
+      <table id="backends">
+        <thead>
+          <tr>
+            <th>Backend</th>
+            <th class="num">Kapasite</th>
+            <th>Aktif</th>
+            <th class="num">Kuyrukta</th>
+            <th class="num">Tahmini bekleme</th>
+            <th>Mod</th>
+            <th class="num">Reddedilen<br><span class="muted">dolu / süre</span></th>
+            <th class="num">EWMA</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="charts">
+    <figure>
+      <figcaption>
+        <h2>İstekler/sn — sonuç</h2>
+        <span id="legend-traffic" class="legend"></span>
+      </figcaption>
+      <div id="chart-traffic" class="chart"></div>
+    </figure>
+
+    <figure>
+      <figcaption>
+        <h2>p95 gecikme (ms)</h2>
+        <span class="legend muted">sadece 2xx yanıtlar</span>
+      </figcaption>
+      <div id="chart-latency" class="chart"></div>
+    </figure>
+
+    <figure>
+      <figcaption>
+        <h2>Kuyrukta bekleyen istek</h2>
+        <span id="legend-queue" class="legend"></span>
+      </figcaption>
+      <div id="chart-queue" class="chart"></div>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Olaylar</h2>
+    <ol id="events" class="events"><li class="muted">Henüz olay yok.</li></ol>
+  </section>
+
+  <footer class="muted" id="totals"></footer>
+</main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

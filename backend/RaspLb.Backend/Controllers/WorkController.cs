@@ -1,5 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using RaspLb.Backend.Admission;
+using RaspLb.Backend.Brownout;
 
 namespace RaspLb.Backend.Controllers;
 
@@ -7,17 +9,21 @@ namespace RaspLb.Backend.Controllers;
 [Route("api/[controller]")]
 public class WorkController : ControllerBase
 {
-    private static readonly int MaxConcurrency =
+    private static readonly int EnrichmentLatencyMs =
         GetIntEnvironmentVariable(
-            "MAX_CONCURRENCY",
-            100);
+            "ENRICHMENT_LATENCY_MS",
+            30);
 
-    private static readonly SemaphoreSlim CapacityGate =
-        new(
-            MaxConcurrency,
-            MaxConcurrency);
+    private readonly AdmissionGate _admissionGate;
+    private readonly BrownoutState _brownoutState;
 
-    private static int _activeRequests;
+    public WorkController(
+        AdmissionGate admissionGate,
+        BrownoutState brownoutState)
+    {
+        _admissionGate = admissionGate;
+        _brownoutState = brownoutState;
+    }
 
     [HttpGet]
     public async Task<IActionResult> Get(
@@ -27,22 +33,47 @@ public class WorkController : ControllerBase
             Stopwatch.StartNew();
 
         /*
-         * QUEUE
+         * QUEUE / ADMISSION
          *
-         * If the backend is already at capacity,
-         * the request waits here.
+         * If the backend is already at capacity, the request waits
+         * here. With shedding enabled the wait is bounded (queue length
+         * and queue timeout); past that the request is rejected early
+         * instead of queueing until it is useless to the caller.
          */
         var queueWatch =
             Stopwatch.StartNew();
 
-        await CapacityGate.WaitAsync(
-            cancellationToken);
+        var admission =
+            await _admissionGate.EnterAsync(
+                cancellationToken);
 
         queueWatch.Stop();
 
+        if (admission != AdmissionResult.Admitted)
+        {
+            var reason =
+                admission == AdmissionResult.RejectedQueueFull
+                    ? "queue-full"
+                    : "queue-timeout";
+
+            Response.Headers.RetryAfter = "1";
+            Response.Headers["X-Rasp-Shed"] = reason;
+
+            return StatusCode(
+                503,
+                new
+                {
+                    Status = "Shed",
+                    Reason = reason,
+                    QueueDelayMs = queueWatch.ElapsedMilliseconds
+                });
+        }
+
         var activeRequestsAtStart =
-            Interlocked.Increment(
-                ref _activeRequests);
+            _admissionGate.GetSnapshot().Active;
+
+        var serviceWatch =
+            Stopwatch.StartNew();
 
         try
         {
@@ -62,11 +93,31 @@ public class WorkController : ControllerBase
                     0);
 
             /*
-             * Simulated backend processing.
+             * Simulated CORE backend processing - never skipped,
+             * this is the part the caller actually asked for.
              */
             await Task.Delay(
                 latencyMs,
                 cancellationToken);
+
+            /*
+             * BROWNOUT
+             *
+             * Optional "enrichment" work (e.g. recommendations,
+             * extra formatting) - skipped while requests are piling
+             * up behind this one, so the core response of the queued
+             * requests is protected instead of non-essential work.
+             */
+            var reducedMode =
+                _brownoutState.ShouldReduce(
+                    _admissionGate.EstimatedQueueWaitMs());
+
+            if (!reducedMode)
+            {
+                await Task.Delay(
+                    EnrichmentLatencyMs,
+                    cancellationToken);
+            }
 
             var shouldFail =
                 Random.Shared.NextDouble()
@@ -90,13 +141,23 @@ public class WorkController : ControllerBase
                     errorRate,
 
                 MaxConcurrency =
-                    MaxConcurrency,
+                    _admissionGate.Capacity,
 
                 ActiveRequestsAtStart =
                     activeRequestsAtStart,
 
                 QueueDelayMs =
                     queueWatch.ElapsedMilliseconds,
+
+                Mode =
+                    reducedMode
+                        ? "Reduced"
+                        : "Full",
+
+                EnrichmentLatencyMs =
+                    reducedMode
+                        ? 0
+                        : EnrichmentLatencyMs,
 
                 ElapsedMs =
                     totalWatch.ElapsedMilliseconds
@@ -113,10 +174,8 @@ public class WorkController : ControllerBase
         }
         finally
         {
-            Interlocked.Decrement(
-                ref _activeRequests);
-
-            CapacityGate.Release();
+            _admissionGate.Exit(
+                serviceWatch.Elapsed.TotalMilliseconds);
         }
     }
 
