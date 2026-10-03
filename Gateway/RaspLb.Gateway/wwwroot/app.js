@@ -242,7 +242,8 @@ function renderTotals(live) {
   const r = live.retries;
   $("totals").textContent =
     `Başlangıçtan beri ${fmt(slo.totalRequests)} istek · goodput %${fmt(slo.goodputRate * 100, 2)}` +
-    ` · deadline aşan ${fmt(slo.deadlineExceeded)} · retry ${fmt(r.retryAttempts)} (${fmt(r.retrySuccesses)} kurtarıldı)`;
+    ` · deadline aşan ${fmt(slo.deadlineExceeded)} · retry ${fmt(r.retryAttempts)} (${fmt(r.retrySuccesses)} kurtarıldı)` +
+    ` · reddedilip başka backend'e giden ${fmt(r.shedRetryAttempts)} (${fmt(r.shedRetrySuccesses)} kurtarıldı)`;
 }
 
 // ---------------------------------------------------------------- charts

@@ -68,7 +68,8 @@ builder.Services.AddSingleton<
 builder.Services
     .AddReverseProxy()
     .LoadFromConfig(
-        builder.Configuration.GetSection("ReverseProxy"));
+        builder.Configuration.GetSection("ReverseProxy"))
+    .AddTransforms(transforms => transforms.AddShedRetryTransform());
 
 var app = builder.Build();
 
@@ -249,7 +250,8 @@ app.MapGet("/debug/config", () =>
             retryOptions.MaxAttempts,
             retryOptions.TimeBudgetMs,
             retryOptions.TokensPerSecond,
-            retryOptions.BurstCapacity
+            retryOptions.BurstCapacity,
+            retryOptions.RetryOnShed
         },
         Destinations = configuredDestinations
     });

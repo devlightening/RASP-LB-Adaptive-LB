@@ -13,4 +13,8 @@ public sealed class RaspRetryOptions
     public int TokensPerSecond { get; set; } = 20;
 
     public int BurstCapacity { get; set; } = 20;
+
+    // Retry a backend's shed 503 (queue full) on another backend.
+    // Sheddable-priority requests are never retried this way.
+    public bool RetryOnShed { get; set; } = true;
 }

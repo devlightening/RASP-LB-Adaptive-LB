@@ -9,7 +9,9 @@ public readonly record struct RetryMetricsSnapshot(
     long TimeBudgetRejected,
     long UnsafeMethodRejected,
     long ResponseStartedRejected,
-    long NoAlternativeDestination);
+    long NoAlternativeDestination,
+    long ShedRetryAttempts,
+    long ShedRetrySuccesses);
 
 public sealed class RetryMetrics
 {
@@ -22,6 +24,8 @@ public sealed class RetryMetrics
     private long _unsafeMethodRejected;
     private long _responseStartedRejected;
     private long _noAlternativeDestination;
+    private long _shedRetryAttempts;
+    private long _shedRetrySuccesses;
 
     public void RecordLogicalRequest() =>
         Interlocked.Increment(ref _logicalRequests);
@@ -50,6 +54,12 @@ public sealed class RetryMetrics
     public void RecordNoAlternativeDestination() =>
         Interlocked.Increment(ref _noAlternativeDestination);
 
+    public void RecordShedRetryAttempt() =>
+        Interlocked.Increment(ref _shedRetryAttempts);
+
+    public void RecordShedRetrySuccess() =>
+        Interlocked.Increment(ref _shedRetrySuccesses);
+
     public RetryMetricsSnapshot GetSnapshot()
     {
         return new RetryMetricsSnapshot(
@@ -61,6 +71,8 @@ public sealed class RetryMetrics
             TimeBudgetRejected: Interlocked.Read(ref _timeBudgetRejected),
             UnsafeMethodRejected: Interlocked.Read(ref _unsafeMethodRejected),
             ResponseStartedRejected: Interlocked.Read(ref _responseStartedRejected),
-            NoAlternativeDestination: Interlocked.Read(ref _noAlternativeDestination));
+            NoAlternativeDestination: Interlocked.Read(ref _noAlternativeDestination),
+            ShedRetryAttempts: Interlocked.Read(ref _shedRetryAttempts),
+            ShedRetrySuccesses: Interlocked.Read(ref _shedRetrySuccesses));
     }
 }
