@@ -26,3 +26,23 @@ Dimmer (2,0 / 0,5) kaldı: daha az giriş-çıkış, daha çok zenginleştirme, 
 ## Bulgu: asıl salınım kaynağı yönlendirme
 
 Saniyelik örnekler ~5 sn periyotlu, sistem genelinde bir döngü gösteriyor. Backend3'te θ yükselince EWMA gecikmesi 125 ms'den 210 ms'ye çıkıyor ve v2 trafiği backend2'ye kaydırıyor. Backend2'nin kuyruğu 2'den 9'a, EWMA'sı 100 ms'den 155 ms'ye çıkıyor ve v2 trafiği geri veriyor. v2 her istekte en düşük skorlu backend'i deterministik olarak seçiyor, bu yüzden EWMA güncellenene kadar trafik tek backend'e yığılıyor ("herding"). Bilinen çözüm, iki rastgele aday arasından seçmek ("power of two choices") ya da skorla orantılı rastgele seçim. Bu ayrı bir iş olarak bekliyor.
+
+## Hipotez sınandı: salınım yönlendirmeden değil (2026-10-03)
+
+`RaspV3LoadBalancingPolicy` eklendi: v2 skoru ve "power of two choices" seçimi. Global en düşük skor yerine iki rastgele adaydan iyi olanı seçiyor. Politika `LB_POLICY` ortam değişkeniyle seçilebiliyor; varsayılan RaspV2.
+
+Aynı build, sadece politika farklı, her biri tek koşu:
+
+| | v2 | v3 (P2C) |
+|---|---|---|
+| Saniyelik p95 std. sapma (midload) | 29,2 ms | 28,2 ms |
+| İstek dağılımı b1 / b2 / b3 (midload) | 3.728 / 8.037 / 4.234 | 3.717 / 8.004 / 4.278 |
+| Backend3 θ ort. / std. sapma | 0,5 / 0,4 | 0,3 / 0,3 |
+| Backend2 kuyruk ort. / std. sapma | 5,9 / 2,6 | 5,0 / 2,5 |
+| priority.js critical / normal p95 | 157 / 240 ms | 155 / 244 ms |
+
+**Sonuç: herding hipotezi yanlış.** İstek dağılımı ve dalgalanmalar iki politikada aynı. Backend3'ün θ değeri v3'te de aynı ~5 sn periyotlu testere dişini çiziyor. Salınım, brownout kontrolcüsünün kendi döngüsünden geliyor: θ yükseliyor → işlem süresi uzuyor → kuyruk büyüyor → yumuşatılmış sinyal ~500 ms gecikmeyle hedefi aşıyor → θ hızla düşüyor. Gecikmeli ölçümle çalışan saf integral kontrolcünün tipik limit döngüsü.
+
+v3'ü varsayılan yapmak için kanıt yok; varsayılan v2 kaldı. Muhtemel düzeltmeler: sinyal gecikmesini azaltmak (τ 500 → ~150 ms), oransal terim eklemek (PI) ya da θ'yı sadece eşik bandının dışında değiştirmek.
+
+Yan düzeltme: v2, log seviyesi kapalıyken bile her istekte `BuildMetricsLog` ile log metnini oluşturuyordu; artık `IsEnabled` kontrolü var.

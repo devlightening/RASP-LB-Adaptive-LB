@@ -3,10 +3,10 @@ using Yarp.ReverseProxy.Model;
 
 namespace RaspLb.Gateway.LoadBalancing;
 
-public sealed class RaspV2LoadBalancingPolicy : ILoadBalancingPolicy
+public class RaspV2LoadBalancingPolicy : ILoadBalancingPolicy
 {
 	private readonly DestinationMetricsStore _metrics;
-	private readonly ILogger<RaspV2LoadBalancingPolicy> _logger;
+	private readonly ILogger _logger;
 
 	private int _warmupCounter;
 
@@ -17,12 +17,19 @@ public sealed class RaspV2LoadBalancingPolicy : ILoadBalancingPolicy
 	public RaspV2LoadBalancingPolicy(
 		DestinationMetricsStore metrics,
 		ILogger<RaspV2LoadBalancingPolicy> logger)
+		: this(metrics, (ILogger)logger)
+	{
+	}
+
+	protected RaspV2LoadBalancingPolicy(
+		DestinationMetricsStore metrics,
+		ILogger logger)
 	{
 		_metrics = metrics;
 		_logger = logger;
 	}
 
-	public string Name => "RaspV2";
+	public virtual string Name => "RaspV2";
 
 	public DestinationState? PickDestination(
 		HttpContext context,
@@ -119,19 +126,32 @@ public sealed class RaspV2LoadBalancingPolicy : ILoadBalancingPolicy
 		// --------------------------------------------------
 
 		var winner =
-			availableDestinations
-				.OrderBy(CalculateScore)
-				.First();
+			SelectWinner(availableDestinations);
 
-		_logger.LogInformation(
-			"RASP-v2 selected {Destination}. Metrics: {Metrics}",
-			winner.DestinationId,
-			BuildMetricsLog(availableDestinations));
+		// BuildMetricsLog formats every destination; skip it entirely unless
+		// the log line is actually written (it runs on every request).
+		if (_logger.IsEnabled(LogLevel.Information))
+		{
+			_logger.LogInformation(
+				"{Policy} selected {Destination}. Metrics: {Metrics}",
+				Name,
+				winner.DestinationId,
+				BuildMetricsLog(availableDestinations));
+		}
 
 		return winner;
 	}
 
-	private double CalculateScore(
+	// v2: the lowest predicted completion time wins.
+	protected virtual DestinationState SelectWinner(
+		IReadOnlyList<DestinationState> candidates)
+	{
+		return candidates
+			.OrderBy(CalculateScore)
+			.First();
+	}
+
+	protected double CalculateScore(
 		DestinationState destination)
 	{
 		var metrics =

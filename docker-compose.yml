@@ -59,6 +59,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
+      ReverseProxy__Clusters__work-cluster__LoadBalancingPolicy: ${LB_POLICY:-RaspV2}
     ports:
       - "5200:8080"
     depends_on:
