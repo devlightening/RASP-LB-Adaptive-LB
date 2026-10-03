@@ -88,12 +88,24 @@ public sealed class RaspV2LoadBalancingPolicy : ILoadBalancingPolicy
 		// PHASE 2 - EXPLORATION
 		// --------------------------------------------------
 
-		if (Random.Shared.NextDouble() < ExplorationRate)
+		// Exploration only refreshes the latency estimate of backends that
+		// are not picked often; it must not push a request into a backend
+		// that is already full. Under overload a blind 10% would otherwise
+		// queue (or get shed) behind a full backend while another has room.
+		var explorable =
+			availableDestinations
+				.Where(destination =>
+					destination.ConcurrentRequestCount
+					< GetCapacity(destination))
+				.ToArray();
+
+		if (explorable.Length > 0 &&
+			Random.Shared.NextDouble() < ExplorationRate)
 		{
 			var selected =
-				availableDestinations[
+				explorable[
 					Random.Shared.Next(
-						availableDestinations.Count)];
+						explorable.Length)];
 
 			_logger.LogInformation(
 				"RASP-v2 exploration selected {Destination}.",

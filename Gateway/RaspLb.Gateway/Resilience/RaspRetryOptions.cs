@@ -17,4 +17,9 @@ public sealed class RaspRetryOptions
     // Retry a backend's shed 503 (queue full) on another backend.
     // Sheddable-priority requests are never retried this way.
     public bool RetryOnShed { get; set; } = true;
+
+    // Only retry a shed if it came back fast. A request that already waited
+    // in a backend queue (queue-timeout) has spent too much of the SLO
+    // deadline for a second queue wait to fit in.
+    public int ShedRetryMaxElapsedMs { get; set; } = 100;
 }

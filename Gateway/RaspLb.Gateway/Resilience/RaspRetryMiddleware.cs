@@ -64,6 +64,13 @@ public sealed class RaspRetryMiddleware
 
             if (context.Items.Remove(ShedRetry.SuppressedKey, out var shedReason))
             {
+                if (requestWatch.ElapsedMilliseconds > _options.ShedRetryMaxElapsedMs)
+                {
+                    _metrics.RecordTimeBudgetRejected();
+                    WriteShedResponse(context, shedReason as string);
+                    return;
+                }
+
                 if (TryPrepareRetry(context, attempt, requestWatch, attemptedDestinationIds, eligibleDestinations, $"shed ({shedReason})"))
                 {
                     attempt++;
@@ -123,7 +130,7 @@ public sealed class RaspRetryMiddleware
             !sheddable &&
             attempt < _options.MaxAttempts &&
             IsSafeMethod(context.Request.Method) &&
-            requestWatch.ElapsedMilliseconds < _options.TimeBudgetMs &&
+            requestWatch.ElapsedMilliseconds < _options.ShedRetryMaxElapsedMs &&
             eligibleDestinations.Count > attemptedDestinationIds.Count + 1;
     }
 

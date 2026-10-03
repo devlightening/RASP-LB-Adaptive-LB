@@ -251,7 +251,8 @@ app.MapGet("/debug/config", () =>
             retryOptions.TimeBudgetMs,
             retryOptions.TokensPerSecond,
             retryOptions.BurstCapacity,
-            retryOptions.RetryOnShed
+            retryOptions.RetryOnShed,
+            retryOptions.ShedRetryMaxElapsedMs
         },
         Destinations = configuredDestinations
     });

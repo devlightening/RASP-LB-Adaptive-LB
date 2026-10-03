@@ -47,3 +47,23 @@ Trafik %20 critical, %50 normal, %30 sheddable. Fazlar: 120 → 350 → 120 iste
 - p95 (2xx) 241 → 249 ms; en yavaş başarılı istek 313 → 368 ms. İkinci deneme süreyi uzatıyor ama deadline'ın (500 ms) altında kalıyor.
 
 **Yan bulgu:** Reddedilen isteklerin %79'unun başka backend'de yer bulması, v2'nin bazen dolu bir backend'i seçtiğini, o anda başkasında boş yer olduğunu gösteriyor. Yönlendirme tarafında iyileştirme payı var.
+
+## Keşfin dolu backend'lere gitmemesi ve deadline'a duyarlı yeniden deneme (2026-10-03)
+
+**1. v2 keşfi (exploration):** v2 isteklerin %10'unu skora bakmadan rastgele bir backend'e gönderiyordu; bu, dolu backend'leri de kapsıyordu. Keşif artık sadece gateway'e göre boş kapasitesi olan backend'ler arasında yapılıyor (`ConcurrentRequestCount < RaspCapacity`). Hepsi doluysa o istek için keşif atlanıyor.
+
+Ölçüm (tek koşu): normal %91,4 → %92,1; reddedilip başka backend'e gönderilmesi gereken normal/critical istek sayısı 1.881 → 1.750 (−%7). Etki tek koşunun gürültü sınırında. Keşif, reddedilen isteklerin backend'de yer bulmasının ana nedeni değil. Değişiklik mantıken doğru olduğu için kaldı.
+
+**2. Yeniden denemenin deadline'ı aşması:** Aynı koşuda 22 başarılı istek 500 ms'yi aştı; en yavaşı 738 ms. Sebep: kuyrukta 150-250 ms bekleyip zaman aşımıyla reddedilen istekler de yeniden deneniyordu, ikinci bekleme deadline'ı aşıyordu. Retry'ın 5 sn'lik zaman bütçesi 500 ms'lik SLO için çok gevşekti.
+
+Düzeltme: `RaspRetry:ShedRetryMaxElapsedMs` (varsayılan 100). Reddedilen istek sadece bu süre içinde döndüyse yeniden deneniyor; aksi halde istemciye 503 dönülüyor.
+
+| | Düzeltmeden önce | Sonra |
+|---|---|---|
+| Deadline aşan başarılı istek | 22 | 5 |
+| En yavaş başarılı istek | 738 ms | 615 ms |
+| Yeniden deneme / kurtarılan | 1.059 / 799 | 1.073 / 824 |
+| Geç döndüğü için denenmeyen | – | 104 |
+| normal başarı oranı | %92,1 | %91,6 |
+
+**Kalan:** Kalan 5 geç istek büyük ihtimalle hızlı reddedilip yeniden gönderilen ama ikinci backend'de de uzun bekleyen istekler. Tam çözüm deadline propagation: gateway kalan süreyi bir başlıkla backend'e iletir, backend kuyruk bekleme süresini buna göre kısar.
