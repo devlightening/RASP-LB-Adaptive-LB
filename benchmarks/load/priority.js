@@ -49,6 +49,9 @@ export const options = {
     "rasp_shed{priority:critical}": ["count>=0"],
     "rasp_shed{priority:normal}": ["count>=0"],
     "rasp_shed{priority:sheddable}": ["count>=0"],
+    "http_req_duration{priority:critical,expected_response:true}": ["p(95)>=0"],
+    "http_req_duration{priority:normal,expected_response:true}": ["p(95)>=0"],
+    "http_req_duration{priority:sheddable,expected_response:true}": ["p(95)>=0"],
   },
 };
 

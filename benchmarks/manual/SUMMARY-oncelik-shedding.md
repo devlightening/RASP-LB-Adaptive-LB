@@ -86,3 +86,21 @@ Düzeltme: `RaspRetry:ShedRetryMaxElapsedMs` (varsayılan 100). Reddedilen istek
 | Yeniden deneme / kurtarılan | 1.073 / 824 | 1.045 / 805 |
 
 Bu turla birlikte aşırı yük altında gecikme garantisi uçtan uca sağlanıyor: gateway kalan süreyi biliyor, backend de geç kalacak işi kabul etmiyor.
+
+## Öncelikli kuyruk (2026-10-03)
+
+**Ne değişti:**
+- `AdmissionGate` içindeki `SemaphoreSlim` (FIFO) kaldırıldı. Yerine her öncelik için ayrı bir FIFO bekleme sırası geldi; boşalan slot önce critical, sonra normal, en son sheddable bekleyene veriliyor.
+- Zaman aşımı ve istemci iptalinde bekleyen sıradan çıkıyor. Slot ile iptal aynı anda gelirse hangisi önce gelirse o geçerli; slot kaybolmuyor.
+- Kapıda erken reddetme hesabı artık sadece öndekileri sayıyor: aynı ya da daha yüksek öncelikteki bekleyenler. Brownout sinyali toplam kuyruğa bakmaya devam ediyor. Snapshot'ta öncelik başına bekleyen sayısı da var.
+- 4 yeni test; toplam 27. Bunlardan biri stres testi: 32 eşzamanlı işçi, rastgele öncelikler; kapasite hiç aşılmıyor ve sonunda hiç slot kaybolmuyor.
+
+**A/B ölçüm** (`priority.js`, k6'da öncelik başına p95, aynı build, sadece `AdmissionGate` farklı, her biri tek koşu):
+
+| p95 (2xx) | FIFO kapı | Öncelikli kuyruk |
+|---|---|---|
+| critical | 256 ms | **153 ms** |
+| normal | 248 ms | 240 ms |
+| sheddable | 155 ms | 155 ms |
+
+Critical istekler artık önlerindeki normal isteklerin arkasında beklemiyor; p95'leri %40 düştü. Sheddable'ın p95'i her iki durumda da düşük, çünkü bu istekler ancak kuyruk kısayken kabul ediliyor. Başarı oranları değişmedi; deadline aşan istek 0.
