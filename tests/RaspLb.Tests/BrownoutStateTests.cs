@@ -53,14 +53,15 @@ public class BrownoutStateTests
     }
 
     [Fact]
-    public void A_short_spike_does_not_switch_brownout_on()
+    public void A_short_spike_only_dims_slightly_and_recovers()
     {
         var state = Create();
 
         Run(state, queueWaitMs: 300, durationMs: 50);
-        Run(state, queueWaitMs: 0, durationMs: 1_000);
+        Assert.True(state.GetSnapshot(300).Dimmer >= 0.85);
 
-        Assert.Equal(0, state.GetSnapshot(0).Activations);
+        Run(state, queueWaitMs: 0, durationMs: 1_000);
+        Assert.Equal(1.0, state.GetSnapshot(0).Dimmer);
     }
 
     [Fact]
@@ -70,9 +71,9 @@ public class BrownoutStateTests
         Run(state, queueWaitMs: 200, durationMs: 2_000);
         var dimmed = state.GetSnapshot(200).Dimmer;
 
-        // The smoothed signal needs ~0.8 s to fall below target from 200 ms,
+        // The smoothed signal needs ~0.25 s to fall below target from 200 ms,
         // so θ only starts climbing after that - a brief lull is not recovery.
-        Run(state, queueWaitMs: 0, durationMs: 500);
+        Run(state, queueWaitMs: 0, durationMs: 100);
         Assert.Equal(dimmed, state.GetSnapshot(0).Dimmer);
 
         Run(state, queueWaitMs: 0, durationMs: 1_000);

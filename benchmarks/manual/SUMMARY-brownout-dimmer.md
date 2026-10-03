@@ -46,3 +46,18 @@ Aynı build, sadece politika farklı, her biri tek koşu:
 v3'ü varsayılan yapmak için kanıt yok; varsayılan v2 kaldı. Muhtemel düzeltmeler: sinyal gecikmesini azaltmak (τ 500 → ~150 ms), oransal terim eklemek (PI) ya da θ'yı sadece eşik bandının dışında değiştirmek.
 
 Yan düzeltme: v2, log seviyesi kapalıyken bile her istekte `BuildMetricsLog` ile log metnini oluşturuyordu; artık `IsEnabled` kontrolü var.
+
+## Kontrolcü ayarı: daha kısa sinyal gecikmesi (2026-10-03)
+
+Yumuşatma zaman sabiti 500 ms'den 150 ms'ye indirildi (`SmoothingTauMs`). Gecikmeli sinyal, integral kontrolcünün hedefi aşıp salınmasına neden oluyordu.
+
+| midload (220 istek/sn), tek koşu | Açma/kapama | Dimmer τ=500 | Dimmer τ=150 |
+|---|---|---|---|
+| Saniyelik p95 std. sapma | 34,7 ms | 29,2-29,7 ms | **22,7 ms** |
+| Backend3'te zenginleştirme yapılan istek | %35 | %44-45 | **%48** |
+| Ortalama p95 | 171 ms | 184-185 ms | 181 ms |
+| Backend3 θ ort. / std. sapma | – | 0,5 / 0,4 | 0,46 / 0,34 |
+
+θ hâlâ salınıyor ama periyot kısaldı ve p95 belirgin biçimde daha kararlı. Bedeli: kısa sıçramalara biraz daha duyarlı (50 ms'lik bir sıçrama θ'yı ~%10 düşürüp 1 sn içinde geri getiriyor). İki zamanlama testi buna göre güncellendi.
+
+Aşırı yük kontrolü (`priority.js`): critical / normal / sheddable p95 152 / 242 / 155 ms, critical'da 0 reddetme, deadline aşan istek 0. Öncekiyle aynı.

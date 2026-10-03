@@ -28,7 +28,9 @@ public readonly record struct BrownoutSnapshot(
 public sealed class BrownoutState
 {
     // Smoothing time constant for the instantaneous queue-wait estimate.
-    private const double SmoothingTauMs = 500;
+    // Kept short: a lagging signal makes the integral controller overshoot
+    // into a limit cycle (500 ms measured worse than 150 ms at 220 req/s).
+    private const double SmoothingTauMs = 150;
 
     // θ change per second at 100% error. Dimming down is urgent (requests
     // are already queueing), brightening up can be gentle.
