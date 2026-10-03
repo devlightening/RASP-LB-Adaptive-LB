@@ -56,6 +56,43 @@ public class AdmissionGateTests
     }
 
     [Fact]
+    public async Task Rejects_at_the_door_when_the_deadline_leaves_no_time_to_wait()
+    {
+        // 100 ms of work and 120 ms of deadline left: at most 20 ms may be
+        // spent queueing, but one request ahead means ~100 ms of waiting.
+        var gate = CreateGate(capacity: 1, maxQueueLength: 10, queueTimeoutMs: 250, serviceMs: 100);
+        await gate.EnterAsync(RequestPriority.Critical, default);
+
+        var result = gate.EnterAsync(RequestPriority.Critical, default, remainingDeadlineMs: 120);
+
+        Assert.True(result.IsCompleted);
+        Assert.Equal(AdmissionResult.RejectedPredictedWait, await result);
+    }
+
+    [Fact]
+    public async Task Deadline_does_not_reject_when_a_slot_is_free()
+    {
+        var gate = CreateGate(capacity: 1, serviceMs: 100);
+
+        Assert.Equal(
+            AdmissionResult.Admitted,
+            await gate.EnterAsync(RequestPriority.Normal, default, remainingDeadlineMs: 10));
+    }
+
+    [Fact]
+    public async Task Queues_normally_when_the_deadline_leaves_enough_time()
+    {
+        var gate = CreateGate(capacity: 1, maxQueueLength: 10, queueTimeoutMs: 250, serviceMs: 100);
+        await gate.EnterAsync(RequestPriority.Critical, default);
+
+        var queued = gate.EnterAsync(RequestPriority.Critical, default, remainingDeadlineMs: 450);
+        Assert.False(queued.IsCompleted);
+
+        gate.Exit(1);
+        Assert.Equal(AdmissionResult.Admitted, await queued);
+    }
+
+    [Fact]
     public async Task Rejects_after_waiting_past_the_queue_timeout()
     {
         var gate = CreateGate(capacity: 1, maxQueueLength: 10, queueTimeoutMs: 50, serviceMs: 1);

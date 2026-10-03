@@ -33,6 +33,14 @@ public sealed class SloMiddleware
     {
         var stopwatch = Stopwatch.StartNew();
 
+        if (_options.Enabled)
+        {
+            // DeadlinePropagation reads this to tell each attempt (retries
+            // included) how much of the deadline is left.
+            context.Items[DeadlinePropagation.StartTimestampKey] =
+                Stopwatch.GetTimestamp();
+        }
+
         try
         {
             await _next(context);

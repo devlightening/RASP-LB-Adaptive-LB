@@ -87,12 +87,15 @@ public sealed class AdmissionGate
 
     public int Capacity => _capacity;
 
+    // remainingDeadlineMs: how much of the caller's end-to-end deadline is
+    // left (X-Rasp-Deadline-Ms from the gateway). Null = no deadline known.
     public async Task<AdmissionResult> EnterAsync(
         RequestPriority priority,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        double? remainingDeadlineMs = null)
     {
         var result =
-            await TryEnterAsync(priority, cancellationToken);
+            await TryEnterAsync(priority, remainingDeadlineMs, cancellationToken);
 
         var index = (int)priority;
 
@@ -110,6 +113,7 @@ public sealed class AdmissionGate
 
     private async Task<AdmissionResult> TryEnterAsync(
         RequestPriority priority,
+        double? remainingDeadlineMs,
         CancellationToken cancellationToken)
     {
         // Fast path: boş slot varsa kuyruğa hiç girmeden geç.
@@ -122,6 +126,21 @@ public sealed class AdmissionGate
         var share = QueueShares[(int)priority];
         var maxQueueLength = (int)Math.Ceiling(_maxQueueLength * share);
         var queueTimeoutMs = Math.Max(1, (int)(_queueTimeoutMs * share));
+
+        if (_sheddingEnabled && remainingDeadlineMs is { } deadlineMs)
+        {
+            // Leave room for the work itself: any wait beyond this means the
+            // response reaches the caller after its deadline - useless work.
+            var usableWaitMs = deadlineMs - CurrentServiceMs();
+
+            if (usableWaitMs <= 0)
+            {
+                Interlocked.Increment(ref _rejectedPredictedWait);
+                return AdmissionResult.RejectedPredictedWait;
+            }
+
+            queueTimeoutMs = Math.Max(1, Math.Min(queueTimeoutMs, (int)usableWaitMs));
+        }
 
         var waiting = Interlocked.Increment(ref _waiting);
 
@@ -181,14 +200,15 @@ public sealed class AdmissionGate
     // Anlık hesaplandığı için trafik kesilince kendiliğinden 0'a düşer.
     public double EstimatedQueueWaitMs()
     {
-        double serviceMs;
+        return Volatile.Read(ref _waiting) * CurrentServiceMs() / _capacity;
+    }
 
+    private double CurrentServiceMs()
+    {
         lock (_serviceLock)
         {
-            serviceMs = _ewmaServiceMs;
+            return _ewmaServiceMs;
         }
-
-        return Volatile.Read(ref _waiting) * serviceMs / _capacity;
     }
 
     public AdmissionSnapshot GetSnapshot()

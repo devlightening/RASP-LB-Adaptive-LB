@@ -69,7 +69,11 @@ builder.Services
     .AddReverseProxy()
     .LoadFromConfig(
         builder.Configuration.GetSection("ReverseProxy"))
-    .AddTransforms(transforms => transforms.AddShedRetryTransform());
+    .AddTransforms(transforms =>
+    {
+        transforms.AddShedRetryTransform();
+        transforms.AddDeadlinePropagation();
+    });
 
 var app = builder.Build();
 

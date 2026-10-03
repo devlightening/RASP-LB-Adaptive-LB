@@ -67,3 +67,22 @@ Düzeltme: `RaspRetry:ShedRetryMaxElapsedMs` (varsayılan 100). Reddedilen istek
 | normal başarı oranı | %92,1 | %91,6 |
 
 **Kalan:** Kalan 5 geç istek büyük ihtimalle hızlı reddedilip yeniden gönderilen ama ikinci backend'de de uzun bekleyen istekler. Tam çözüm deadline propagation: gateway kalan süreyi bir başlıkla backend'e iletir, backend kuyruk bekleme süresini buna göre kısar.
+
+## Deadline propagation (2026-10-03)
+
+**Ne değişti:**
+- Gateway (`Slo/DeadlinePropagation.cs`) her denemede (retry dahil) SLO deadline'ından kalan süreyi `X-Rasp-Deadline-Ms` başlığıyla backend'e iletiyor. Başlığı her zaman gateway yazıyor; istemcinin gönderdiği değer siliniyor. `X-Rasp-Deadline-Ms: 99999` gönderen istemcinin isteği backend'e 499 olarak ulaştı.
+- `AdmissionGate` kuyrukta en fazla `kalan süre − EWMA işlem süresi` kadar bekletiyor. Bu süre sıfırın altındaysa istek kapıda reddediliyor (`predicted-wait`). Boş slot varsa istek her zamanki gibi hemen kabul ediliyor. Shedding kapalıyken deadline yok sayılıyor.
+- 3 yeni birim testi; toplam 21.
+
+**Ölçüm** (`priority.js`, tek koşu):
+
+| | Önce | Sonra |
+|---|---|---|
+| Deadline aşan başarılı istek | 5 | **0** |
+| En yavaş başarılı istek | 615 ms | 333 ms |
+| p95 (2xx) | 248 ms | 248 ms |
+| critical / normal / sheddable başarı | %100 / %91,6 / %23,7 | %100 / %92,5 / %23,7 |
+| Yeniden deneme / kurtarılan | 1.073 / 824 | 1.045 / 805 |
+
+Bu turla birlikte aşırı yük altında gecikme garantisi uçtan uca sağlanıyor: gateway kalan süreyi biliyor, backend de geç kalacak işi kabul etmiyor.

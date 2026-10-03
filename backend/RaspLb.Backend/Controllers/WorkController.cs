@@ -47,10 +47,15 @@ public class WorkController : ControllerBase
             ParsePriority(
                 Request.Headers["X-Rasp-Priority"]);
 
+        var remainingDeadlineMs =
+            ParseDeadline(
+                Request.Headers["X-Rasp-Deadline-Ms"]);
+
         var admission =
             await _admissionGate.EnterAsync(
                 priority,
-                cancellationToken);
+                cancellationToken,
+                remainingDeadlineMs);
 
         queueWatch.Stop();
 
@@ -158,6 +163,9 @@ public class WorkController : ControllerBase
                 QueueDelayMs =
                     queueWatch.ElapsedMilliseconds,
 
+                RemainingDeadlineMs =
+                    remainingDeadlineMs,
+
                 Mode =
                     reducedMode
                         ? "Reduced"
@@ -198,6 +206,18 @@ public class WorkController : ControllerBase
             "sheddable" => RequestPriority.Sheddable,
             _ => RequestPriority.Normal
         };
+    }
+
+    private static double? ParseDeadline(
+        string? value)
+    {
+        return double.TryParse(
+            value,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var deadlineMs)
+            ? deadlineMs
+            : null;
     }
 
     private static int GetIntEnvironmentVariable(
